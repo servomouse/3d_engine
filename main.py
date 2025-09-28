@@ -1,5 +1,6 @@
 import tkinter as tk
 import random
+import math
 
 SPHERE_RADIUS = 5
 
@@ -8,46 +9,73 @@ class PhyEngine:
     def __init__(self):
         pass
 
+    def get_distance(self, point1, point2):
+        c_sum = 0
+        for d in range(len(point1)):
+            c_sum += (point1[d] - point2[d])**2
+        return math.sqrt(c_sum)
+
     def update_with_collisions(self, points, box, max_distance):
-        for item in points:
-            pass
+        # points: [[current_coords, next_position, new_speed]...]
+        new_points = []
+        num_steps = math.ceil(max_distance / SPHERE_RADIUS)
+        for p in points:
+            reflected = False
+            new_position = [p[1][i] for i in range(len(p[1]))]
+            new_speed = [p[2][i] for i in range(len(p[2]))]
+            for d in range(len(new_position)):
+                if new_position[d] < box[d][0]:
+                    new_position[d] = box[d][0] + ((box[d][0] - new_position[d]) * 0.8)
+                    new_speed[d] *= -1
+                    reflected = True
+                if new_position[d] > box[d][1]:
+                    new_position[d] = box[d][1] - ((new_position[d] - box[d][1]) * 0.8)
+                    new_speed[d] *= -1
+                    reflected = True
+            if reflected:
+                for d in range(len(new_speed)):
+                    new_speed[d] *= 0.8
+            new_points.append([new_position, new_speed])
+        return new_points
     
     def calc_next_position(self, point, initial_speed, acceleration, t=1):
         next_position = [point[d] + (initial_speed[d] * t + (acceleration[d] * t * t) / 2) for d in range(len(point))]
         return next_position
 
-    def calculate_next_positions(self, points, box, t=1):
+    def calculate_next_positions(self, curr_points, box, t=1):
         new_points = []
         max_distance = 0
+        points = []
 
-        for item in points:
+        for item in curr_points:
             force_vector = item["force_vector"]
             current_speed = item["speed"]
             current_coords = item["coords"]
             mass = item["mass"]
             point_id = item["point_id"]
 
-            # Calculate acceleration (a = F/m)
             acceleration = [force / mass for force in force_vector]
 
-            # Update speed (v = v + a)
             new_speed = [current_speed[i] + (acceleration[i] * t) for i in range(len(current_coords))]
 
             next_position = self.calc_next_position(current_coords, current_speed, acceleration, t)
             # next_position = [current_coords[i] + new_speed[i] for i in range(len(current_coords))]
-            reflected = False
-            for d in range(len(next_position)):
-                if next_position[d] < box[d][0]:
-                    next_position[d] = box[d][0] + ((box[d][0] - next_position[d]) * 0.8)
-                    new_speed[d] *= -1
-                    reflected = True
-                if next_position[d] > box[d][1]:
-                    next_position[d] = box[d][1] - ((next_position[d] - box[d][1]) * 0.8)
-                    new_speed[d] *= -1
-                    reflected = True
-            if reflected:
-                for d in range(len(new_speed)):
-                    new_speed[d] *= 0.8
+            points.append([current_coords, next_position, new_speed])
+
+            distance = self.get_distance(current_coords, next_position)
+            if distance > max_distance:
+                max_distance = distance
+
+        next_step = self.update_with_collisions(points, box, max_distance)
+        for i in range(len(curr_points)):
+            force_vector = curr_points[i]["force_vector"]
+            current_speed = curr_points[i]["speed"]
+            current_coords = curr_points[i]["coords"]
+            mass = curr_points[i]["mass"]
+            point_id = curr_points[i]["point_id"]
+
+            next_position = next_step[i][0]
+            new_speed = next_step[i][1]
 
             # Store the new position and speed for the next iteration
             new_points.append({

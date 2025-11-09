@@ -12,33 +12,59 @@ root.title("Moving Circle")
 canvas = tk.Canvas(root, width=WINDOW_WIDTH, height=WINDOW_HEIGHT, bg="white")
 canvas.pack()
 
-# Circle properties
-radius = 10
-circle_id = None  # Will store the canvas ID of the circle
+circles = [
+    {
+        "id": None,
+        "radius": 10,
+        "coords": [],
+        "force": [],
+        "speed": [],
+        "mass": 1,
+        "color": "#0000FF"
+    },
+    {
+        "id": None,
+        "radius": 10,
+        "coords": [],
+        "force": [],
+        "speed": [],
+        "mass": 1,
+        "color": "#00FF00"
+    },
+    {
+        "id": None,
+        "radius": 10,
+        "coords": [],
+        "force": [],
+        "speed": [],
+        "mass": 1,
+        "color": "#FF0000"
+    },
+]
 
-def move_circle():
-    global circle_id
-    
-    # Delete the previous circle if it exists
-    if circle_id is not None:
-        canvas.delete(circle_id)
-    
-    # Generate random coordinates within canvas boundaries
-    x = random.randint(radius, WINDOW_WIDTH - radius)
-    y = random.randint(radius, WINDOW_HEIGHT - radius)
-    
-    # Draw the new circle
-    circle_id = canvas.create_oval(
-        x - radius, y - radius,  # Top-left corner
-        x + radius, y + radius,  # Bottom-right corner
-        fill="blue", outline="darkblue"
-    )
+def update_world():
+    for circle in circles:
+        
+        # Delete the previous circle if it exists
+        if circle["id"] is not None:
+            canvas.delete(circle["id"])
+        
+        # Generate random coordinates within canvas boundaries
+        x = random.randint(circle["radius"], WINDOW_WIDTH - circle["radius"])
+        y = random.randint(circle["radius"], WINDOW_HEIGHT - circle["radius"])
+        
+        # Draw the new circle
+        circle["id"] = canvas.create_oval(
+            x - circle["radius"], y - circle["radius"],  # Top-left corner
+            x + circle["radius"], y + circle["radius"],  # Bottom-right corner
+            fill=circle["color"], outline="darkblue"
+        )
     
     # Schedule the next move after 1000ms (1 second)
-    root.after(1000, move_circle)
+    root.after(1000, update_world)
 
 # Start the animation
-move_circle()
+update_world()
 
 # Start the Tkinter event loop
 root.mainloop()

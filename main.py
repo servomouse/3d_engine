@@ -3,6 +3,7 @@ import random
 import json
 import sys
 import time
+import math
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -45,6 +46,40 @@ def get_random_coords(radius=ATOM_RADIUS):
 def add_gravity(atoms):
     for atom in atoms:
         atom["force"][VERTICAL_AXIS] += -0.98 * atom["mass"]
+
+
+def calculate_force_vectors(point1, point2, force_value):
+    direction_vector = [p2 - p1 for p1, p2 in zip(point1, point2)]
+
+    distance = sum(comp ** 2 for comp in direction_vector) ** 0.5
+
+    if distance == 0:   # Handle zero distance case
+        raise ValueError("The points coincide; cannot calculate force.")
+
+    unit_vector = [comp / distance for comp in direction_vector]    # Normalize the direction vector
+
+    force_on_p1 = [force_value * comp for comp in unit_vector]
+    force_on_p2 = [-f for f in force_on_p1]
+
+    return force_on_p1, force_on_p2
+
+
+def get_distance(point1, point2):
+    return math.sqrt(sum((p2 - p1)**2 for p1, p2 in zip(point1, point2)))
+
+
+def calculate_forces(atoms, links):
+    for link in links:
+        point1 = atoms[link["atoms"][0]]["coords"]
+        point2 = atoms[link["atoms"][1]]["coords"]
+        link_len = get_distance(point1, point2)
+        force = (link_len - link["length"]) * link["stiffness"]
+        force_p1, force_p2 = calculate_force_vectors(point1, point2, force)
+        # print(f"{force_p1 = }, {force_p2 = }")
+        for i in range(len(WORLD_LIMITS)):
+            atoms[link["atoms"][0]]["force"][i] = force_p1[i]
+            atoms[link["atoms"][1]]["force"][i] = force_p2[i]
+    # sys.exit()
 
 
 def update_coords(atoms):
@@ -116,19 +151,19 @@ links = [
     {
         "atoms": [0, 1],
         "length": 20,
-        "stiffness": 1,
+        "stiffness": 0.001,
         "id": None
     },
     {
         "atoms": [1, 2],
         "length": 20,
-        "stiffness": 1,
+        "stiffness": 0.001,
         "id": None
     },
     {
         "atoms": [2, 0],
         "length": 20,
-        "stiffness": 1,
+        "stiffness": 0.001,
         "id": None
     },
 ]
@@ -139,6 +174,7 @@ def update_world():
     global first_run
 
     if not first_run:
+        calculate_forces(atoms, links)
         update_coords(atoms)
     else:
         first_run = False

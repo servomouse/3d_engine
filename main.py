@@ -4,11 +4,12 @@ import json
 import sys
 
 WINDOW_WIDTH = 1000
-WINDOW_HEIGHT = 500
+WINDOW_HEIGHT = 600
 WORLD_LIMITS = [
     [0, WINDOW_WIDTH],
     [0, WINDOW_HEIGHT]
 ]
+VERTICAL_AXIS = 1
 ATOM_RADIUS = 10
 POINT_MASS = 1  # 1 gramm
 
@@ -30,12 +31,19 @@ def get_random_coords(radius=ATOM_RADIUS):
     ]
 
 
+def add_gravity(atoms):
+    for atom in atoms:
+        atom["force"][VERTICAL_AXIS] += -9.8 * atom["mass"]
+
+
 def update_coords(atoms):
+    add_gravity(atoms)
     accelerations = []
     for i in range(len(atoms)):
         accelerations.append([])
         for axis in range(len(WORLD_LIMITS)):
-            accelerations[-1].append(atoms[i]["force"][axis] * atoms[i]["mass"])
+            accelerations[-1].append(atoms[i]["force"][axis] / atoms[i]["mass"])
+            atoms[i]["force"][axis] = 0 # Clear force vecxtor after calculating accelerations
     
     for i in range(len(atoms)):
         for axis in range(len(WORLD_LIMITS)):
@@ -68,7 +76,7 @@ atoms = [
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": get_random_coords(),
-        "force": [0, -9.8],
+        "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
         "color": "#0000FF"
@@ -77,7 +85,7 @@ atoms = [
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": get_random_coords(),
-        "force": [0, -9.8],
+        "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
         "color": "#00FF00"
@@ -86,7 +94,7 @@ atoms = [
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": get_random_coords(),
-        "force": [0, -9.8],
+        "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
         "color": "#FF0000"

@@ -1,13 +1,21 @@
 import tkinter as tk
 import random
+import json
+import sys
 
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 480
-CIRCLE_RADIUS = 10
+WINDOW_WIDTH = 1000
+WINDOW_HEIGHT = 500
+WORLD_LIMITS = [
+    [0, WINDOW_WIDTH],
+    [0, WINDOW_HEIGHT]
+]
+ATOM_RADIUS = 10
+POINT_MASS = 1  # 1 gramm
 
 
-# Returns circle id
-def draw_circle(canvas, coords, radius, color):
+# Returns atom id
+def draw_atom(canvas, coords, radius, color):
+    print(f"Drawing an atom at {coords}")
     return canvas.create_oval(
         coords[0] - radius, WINDOW_HEIGHT - (coords[1] - radius),  # Top-left corner
         coords[0] + radius, WINDOW_HEIGHT - (coords[1] + radius),  # Bottom-right corner
@@ -15,11 +23,36 @@ def draw_circle(canvas, coords, radius, color):
     )
 
 
-def get_random_coords(radius=CIRCLE_RADIUS):
+def get_random_coords(radius=ATOM_RADIUS):
     return [
         random.randint(radius, WINDOW_WIDTH - radius),
         random.randint(radius, WINDOW_HEIGHT - radius)
     ]
+
+
+def update_coords(atoms):
+    accelerations = []
+    for i in range(len(atoms)):
+        accelerations.append([])
+        for axis in range(len(WORLD_LIMITS)):
+            accelerations[-1].append(atoms[i]["force"][axis] * atoms[i]["mass"])
+    
+    for i in range(len(atoms)):
+        for axis in range(len(WORLD_LIMITS)):
+            atoms[i]["speed"][axis] += accelerations[i][axis]
+
+    for i in range(len(atoms)):
+        for axis in range(len(WORLD_LIMITS)):
+            atoms[i]["coords"][axis] += atoms[i]["speed"][axis]
+            if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
+                atoms[i]["coords"][axis] = WORLD_LIMITS[axis][0]
+                atoms[i]["speed"][axis] = 0
+            elif atoms[i]["coords"][axis] > (WORLD_LIMITS[axis][1] - atoms[i]["radius"]):
+                atoms[i]["coords"][axis] = WORLD_LIMITS[axis][1]
+                atoms[i]["speed"][axis] = 0
+
+    # for atom in atoms:
+    #     atom["coords"] = get_random_coords(atom["radius"])
 
 
 # Create the main window
@@ -30,52 +63,52 @@ root.title("Moving Circle")
 canvas = tk.Canvas(root, width=WINDOW_WIDTH, height=WINDOW_HEIGHT, bg="white")
 canvas.pack()
 
-circles = [
+atoms = [
     {
         "id": None,
-        "radius": CIRCLE_RADIUS,
+        "radius": ATOM_RADIUS,
         "coords": get_random_coords(),
-        "force": [0, -1],
+        "force": [0, -9.8],
         "speed": [0, 0],
-        "mass": 1,
+        "mass": POINT_MASS,
         "color": "#0000FF"
     },
     {
         "id": None,
-        "radius": CIRCLE_RADIUS,
+        "radius": ATOM_RADIUS,
         "coords": get_random_coords(),
-        "force": [],
-        "speed": [],
-        "mass": 1,
+        "force": [0, -9.8],
+        "speed": [0, 0],
+        "mass": POINT_MASS,
         "color": "#00FF00"
     },
     {
         "id": None,
-        "radius": CIRCLE_RADIUS,
+        "radius": ATOM_RADIUS,
         "coords": get_random_coords(),
-        "force": [],
-        "speed": [],
-        "mass": 1,
+        "force": [0, -9.8],
+        "speed": [0, 0],
+        "mass": POINT_MASS,
         "color": "#FF0000"
     },
 ]
 
+first_run = True
+
 def update_world():
-    for circle in circles:
-        if circle["id"] is not None:
-            circle["coords"] = get_random_coords(circle["radius"])
+    global first_run
 
-    for circle in circles:
-        if circle["id"] is not None:
-            canvas.delete(circle["id"])
-        
-        # circle["coords"] = get_random_coords(circle["radius"])
-        circle["id"] = draw_circle(canvas, circle["coords"], circle["radius"], circle["color"])
+    if not first_run:
+        update_coords(atoms)
+    else:
+        first_run = False
 
-    root.after(1000, update_world)
+    for atom in atoms:
+        if atom["id"] is not None:
+            canvas.delete(atom["id"])
+        atom["id"] = draw_atom(canvas, atom["coords"], atom["radius"], atom["color"])
 
-# Start the animation
+    root.after(40, update_world)
+
 update_world()
-
-# Start the Tkinter event loop
 root.mainloop()

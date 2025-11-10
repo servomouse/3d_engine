@@ -2,6 +2,7 @@ import tkinter as tk
 import random
 import json
 import sys
+import time
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -24,6 +25,16 @@ def draw_atom(canvas, coords, radius, color):
     )
 
 
+# Returns line id
+def draw_line(canvas, coords1, coords2):
+    print(f"Drawing a line at {coords1}, {coords2}")
+    return canvas.create_line(
+        coords1[0], WINDOW_HEIGHT - coords1[1], # Start
+        coords2[0], WINDOW_HEIGHT - coords2[1], # End
+        fill="blue", width=3
+    )
+
+
 def get_random_coords(radius=ATOM_RADIUS):
     return [
         random.randint(radius, WINDOW_WIDTH - radius),
@@ -33,7 +44,7 @@ def get_random_coords(radius=ATOM_RADIUS):
 
 def add_gravity(atoms):
     for atom in atoms:
-        atom["force"][VERTICAL_AXIS] += -9.8 * atom["mass"]
+        atom["force"][VERTICAL_AXIS] += -0.98 * atom["mass"]
 
 
 def update_coords(atoms):
@@ -79,7 +90,7 @@ atoms = [
         "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
-        "color": "#0000FF"
+        "color": "#0000FF",
     },
     {
         "id": None,
@@ -101,6 +112,27 @@ atoms = [
     },
 ]
 
+links = [
+    {
+        "atoms": [0, 1],
+        "length": 20,
+        "stiffness": 1,
+        "id": None
+    },
+    {
+        "atoms": [1, 2],
+        "length": 20,
+        "stiffness": 1,
+        "id": None
+    },
+    {
+        "atoms": [2, 0],
+        "length": 20,
+        "stiffness": 1,
+        "id": None
+    },
+]
+
 first_run = True
 
 def update_world():
@@ -115,6 +147,14 @@ def update_world():
         if atom["id"] is not None:
             canvas.delete(atom["id"])
         atom["id"] = draw_atom(canvas, atom["coords"], atom["radius"], atom["color"])
+    
+    for link in links:
+        if link["id"] is not None:
+            canvas.delete(link["id"])
+        link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
+    # time.sleep(10)
+    # sys.exit()
+
 
     root.after(40, update_world)
 

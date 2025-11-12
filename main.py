@@ -28,7 +28,7 @@ def draw_atom(canvas, coords, radius, color):
 
 # Returns line id
 def draw_line(canvas, coords1, coords2):
-    print(f"Drawing a line at {coords1}, {coords2}")
+    print(f"Drawing a line at {coords1}, {coords2}, length = {get_distance(coords1, coords2)}")
     return canvas.create_line(
         coords1[0], WINDOW_HEIGHT - coords1[1], # Start
         coords2[0], WINDOW_HEIGHT - coords2[1], # End
@@ -46,6 +46,13 @@ def get_random_coords(radius=ATOM_RADIUS):
 def add_gravity(atoms):
     for atom in atoms:
         atom["force"][VERTICAL_AXIS] += -0.98 * atom["mass"]
+
+
+def vector_len(vec):
+    s = 0
+    for axis in vec:
+        s += axis**2
+    return math.sqrt(s)
 
 
 def calculate_force_vectors(point1, point2, force_value):
@@ -77,9 +84,8 @@ def calculate_forces(atoms, links):
         force_p1, force_p2 = calculate_force_vectors(point1, point2, force)
         # print(f"{force_p1 = }, {force_p2 = }")
         for i in range(len(WORLD_LIMITS)):
-            atoms[link["atoms"][0]]["force"][i] = force_p1[i]
-            atoms[link["atoms"][1]]["force"][i] = force_p2[i]
-    # sys.exit()
+            atoms[link["atoms"][0]]["force"][i] += force_p1[i]
+            atoms[link["atoms"][1]]["force"][i] += force_p2[i]
 
 
 def update_coords(atoms):
@@ -109,6 +115,12 @@ def update_coords(atoms):
     #     atom["coords"] = get_random_coords(atom["radius"])
 
 
+def update_speeds(atoms):
+    for atom in atoms:
+        for axis in range(len(atom["speed"])):
+            atom["speed"][axis] *= 0.9
+
+
 # Create the main window
 root = tk.Tk()
 root.title("Moving Circle")
@@ -121,7 +133,7 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": get_random_coords(),
+        "coords": [500, 535],
         "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
@@ -130,7 +142,7 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": get_random_coords(),
+        "coords": [465, 500],
         "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
@@ -139,7 +151,7 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": get_random_coords(),
+        "coords": [535, 500],
         "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
@@ -150,20 +162,20 @@ atoms = [
 links = [
     {
         "atoms": [0, 1],
-        "length": 20,
-        "stiffness": 0.001,
+        "length": 70,
+        "stiffness": 1,
         "id": None
     },
     {
         "atoms": [1, 2],
-        "length": 20,
-        "stiffness": 0.001,
+        "length": 70,
+        "stiffness": 1,
         "id": None
     },
     {
         "atoms": [2, 0],
-        "length": 20,
-        "stiffness": 0.001,
+        "length": 70,
+        "stiffness": 1,
         "id": None
     },
 ]
@@ -174,6 +186,7 @@ def update_world():
     global first_run
 
     if not first_run:
+        update_speeds(atoms)
         calculate_forces(atoms, links)
         update_coords(atoms)
     else:

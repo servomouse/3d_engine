@@ -12,6 +12,7 @@ WORLD_LIMITS = [
     [0, WINDOW_HEIGHT]
 ]
 NUM_DIMENSIONS = len(WORLD_LIMITS)
+DRAG_COEFFICIENT = 0.1
 VERTICAL_AXIS = 1
 ATOM_RADIUS = 10
 POINT_MASS = 1  # 1 gramm
@@ -89,7 +90,14 @@ def calculate_forces(atoms, links):
             atoms[link["atoms"][1]]["force"][i] += force_p2[i]
 
 
+def apply_drag(v):
+    if v < 0:
+        return v + (DRAG_COEFFICIENT * v**2)
+    return v - (DRAG_COEFFICIENT * v**2)
+
+
 def update_coords(atoms, links):
+    calculate_forces(atoms, links)
     add_gravity(atoms)
     max_distance = 0
     accelerations = []
@@ -112,7 +120,7 @@ def update_coords(atoms, links):
     time_step = 1 / num_substeps
 
     for step in range(num_substeps):
-        update_speeds(atoms)
+        # update_speeds(atoms)
         calculate_forces(atoms, links)
         add_gravity(atoms)
 
@@ -125,7 +133,7 @@ def update_coords(atoms, links):
     
         for i in range(len(atoms)):
             for axis in range(NUM_DIMENSIONS):
-                atoms[i]["speed"][axis] += accelerations[i][axis] * time_step
+                atoms[i]["speed"][axis] = apply_drag(atoms[i]["speed"][axis] + accelerations[i][axis] * time_step)
 
         for i in range(len(atoms)):
             for axis in range(NUM_DIMENSIONS):

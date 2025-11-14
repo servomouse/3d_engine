@@ -13,6 +13,7 @@ WORLD_LIMITS = [
 ]
 NUM_DIMENSIONS = len(WORLD_LIMITS)
 DRAG_COEFFICIENT = 0.1
+G_CONST = -0.98
 VERTICAL_AXIS = 1
 ATOM_RADIUS = 10
 POINT_MASS = 1  # 1 gramm
@@ -47,7 +48,7 @@ def get_random_coords(radius=ATOM_RADIUS):
 
 def add_gravity(atoms):
     for atom in atoms:
-        atom["force"][VERTICAL_AXIS] += -0.98 * atom["mass"]
+        atom["force"][VERTICAL_AXIS] += G_CONST * atom["mass"]
 
 
 def vector_len(vec):
@@ -98,7 +99,7 @@ def apply_drag(v):
 
 def update_coords(atoms, links):
     calculate_forces(atoms, links)
-    add_gravity(atoms)
+    # add_gravity(atoms)
     max_distance = 0
     accelerations = []
     for i in range(len(atoms)):
@@ -106,12 +107,14 @@ def update_coords(atoms, links):
         for axis in range(NUM_DIMENSIONS):
             accelerations[-1].append(atoms[i]["force"][axis] / atoms[i]["mass"])
             atoms[i]["force"][axis] = 0 # Clear force vector after calculating accelerations
-    
+
     for i in range(len(atoms)):
         init_coords = atoms[i]["coords"]
         fin_coords = [0 for I in range(NUM_DIMENSIONS)]
         for axis in range(NUM_DIMENSIONS):
-            fin_coords[axis] = init_coords[axis] + (atoms[i]["speed"][axis] + accelerations[i][axis])
+            fin_coords[axis] = init_coords[axis] + (atoms[i]["i_speed"][axis] + accelerations[i][axis])
+            # if axis == VERTICAL_AXIS:
+        fin_coords[VERTICAL_AXIS] += atoms[i]["g_speed"][VERTICAL_AXIS] - G_CONST
         d = get_distance(init_coords, fin_coords)
         if d > max_distance:
             max_distance = d
@@ -122,7 +125,7 @@ def update_coords(atoms, links):
     for step in range(num_substeps):
         # update_speeds(atoms)
         calculate_forces(atoms, links)
-        add_gravity(atoms)
+        # add_gravity(atoms)
 
         accelerations = []
         for i in range(len(atoms)):
@@ -133,26 +136,31 @@ def update_coords(atoms, links):
     
         for i in range(len(atoms)):
             for axis in range(NUM_DIMENSIONS):
-                atoms[i]["speed"][axis] = apply_drag(atoms[i]["speed"][axis] + accelerations[i][axis] * time_step)
+                atoms[i]["i_speed"][axis] = apply_drag(atoms[i]["i_speed"][axis] + accelerations[i][axis] * time_step)
+                # if axis == VERTICAL_AXIS:
+            atoms[i]["g_speed"][VERTICAL_AXIS] = atoms[i]["g_speed"][VERTICAL_AXIS] + G_CONST * time_step
+
 
         for i in range(len(atoms)):
             for axis in range(NUM_DIMENSIONS):
-                atoms[i]["coords"][axis] += atoms[i]["speed"][axis]
+                atoms[i]["coords"][axis] += atoms[i]["i_speed"][axis] * time_step + atoms[i]["g_speed"][axis] * time_step
                 if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
                     atoms[i]["coords"][axis] = WORLD_LIMITS[axis][0]
-                    atoms[i]["speed"][axis] = 0
+                    atoms[i]["i_speed"][axis] = 0
+                    atoms[i]["g_speed"][axis] = 0
                 elif atoms[i]["coords"][axis] > (WORLD_LIMITS[axis][1] - atoms[i]["radius"]):
                     atoms[i]["coords"][axis] = WORLD_LIMITS[axis][1]
-                    atoms[i]["speed"][axis] = 0
+                    atoms[i]["i_speed"][axis] = 0
+                    atoms[i]["g_speed"][axis] = 0
 
     # for atom in atoms:
     #     atom["coords"] = get_random_coords(atom["radius"])
 
 
-def update_speeds(atoms):
-    for atom in atoms:
-        for axis in range(len(atom["speed"])):
-            atom["speed"][axis] *= 0.9
+# def update_speeds(atoms):
+#     for atom in atoms:
+#         for axis in range(len(atom["speed"])):
+#             atom["speed"][axis] *= 0.9
 
 
 # Create the main window
@@ -169,7 +177,8 @@ atoms = [
         "radius": ATOM_RADIUS,
         "coords": [500, 535],
         "force": [0, 0],
-        "speed": [0, 0],
+        "i_speed": [0, 0],
+        "g_speed": [0, 0],
         "mass": POINT_MASS,
         "color": "#0000FF",
     },
@@ -178,7 +187,8 @@ atoms = [
         "radius": ATOM_RADIUS,
         "coords": [455, 500],
         "force": [0, 0],
-        "speed": [0, 0],
+        "i_speed": [0, 0],
+        "g_speed": [0, 0],
         "mass": POINT_MASS,
         "color": "#00FF00"
     },
@@ -187,7 +197,8 @@ atoms = [
         "radius": ATOM_RADIUS,
         "coords": [535, 500],
         "force": [0, 0],
-        "speed": [0, 0],
+        "i_speed": [0, 0],
+        "g_speed": [0, 0],
         "mass": POINT_MASS,
         "color": "#FF0000"
     },

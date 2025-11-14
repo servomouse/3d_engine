@@ -11,6 +11,7 @@ WORLD_LIMITS = [
     [0, WINDOW_WIDTH],
     [0, WINDOW_HEIGHT]
 ]
+NUM_DIMENSIONS = len(WORLD_LIMITS)
 VERTICAL_AXIS = 1
 ATOM_RADIUS = 10
 POINT_MASS = 1  # 1 gramm
@@ -83,33 +84,58 @@ def calculate_forces(atoms, links):
         force = (link_len - link["length"]) * link["stiffness"]
         force_p1, force_p2 = calculate_force_vectors(point1, point2, force)
         # print(f"{force_p1 = }, {force_p2 = }")
-        for i in range(len(WORLD_LIMITS)):
+        for i in range(NUM_DIMENSIONS):
             atoms[link["atoms"][0]]["force"][i] += force_p1[i]
             atoms[link["atoms"][1]]["force"][i] += force_p2[i]
 
 
-def update_coords(atoms):
+def update_coords(atoms, links):
     add_gravity(atoms)
+    max_distance = 0
     accelerations = []
     for i in range(len(atoms)):
         accelerations.append([])
-        for axis in range(len(WORLD_LIMITS)):
+        for axis in range(NUM_DIMENSIONS):
             accelerations[-1].append(atoms[i]["force"][axis] / atoms[i]["mass"])
-            atoms[i]["force"][axis] = 0 # Clear force vecxtor after calculating accelerations
+            atoms[i]["force"][axis] = 0 # Clear force vector after calculating accelerations
     
     for i in range(len(atoms)):
-        for axis in range(len(WORLD_LIMITS)):
-            atoms[i]["speed"][axis] += accelerations[i][axis]
+        init_coords = atoms[i]["coords"]
+        fin_coords = [0 for I in range(NUM_DIMENSIONS)]
+        for axis in range(NUM_DIMENSIONS):
+            fin_coords[axis] = init_coords[axis] + (atoms[i]["speed"][axis] + accelerations[i][axis])
+        d = get_distance(init_coords, fin_coords)
+        if d > max_distance:
+            max_distance = d
+    
+    num_substeps = math.ceil(max_distance / ATOM_RADIUS)
+    time_step = 1 / num_substeps
 
-    for i in range(len(atoms)):
-        for axis in range(len(WORLD_LIMITS)):
-            atoms[i]["coords"][axis] += atoms[i]["speed"][axis]
-            if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
-                atoms[i]["coords"][axis] = WORLD_LIMITS[axis][0]
-                atoms[i]["speed"][axis] = 0
-            elif atoms[i]["coords"][axis] > (WORLD_LIMITS[axis][1] - atoms[i]["radius"]):
-                atoms[i]["coords"][axis] = WORLD_LIMITS[axis][1]
-                atoms[i]["speed"][axis] = 0
+    for step in range(num_substeps):
+        update_speeds(atoms)
+        calculate_forces(atoms, links)
+        add_gravity(atoms)
+
+        accelerations = []
+        for i in range(len(atoms)):
+            accelerations.append([])
+            for axis in range(NUM_DIMENSIONS):
+                accelerations[-1].append(atoms[i]["force"][axis] / atoms[i]["mass"])
+                atoms[i]["force"][axis] = 0 # Clear force vector after calculating accelerations
+    
+        for i in range(len(atoms)):
+            for axis in range(NUM_DIMENSIONS):
+                atoms[i]["speed"][axis] += accelerations[i][axis] * time_step
+
+        for i in range(len(atoms)):
+            for axis in range(NUM_DIMENSIONS):
+                atoms[i]["coords"][axis] += atoms[i]["speed"][axis]
+                if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
+                    atoms[i]["coords"][axis] = WORLD_LIMITS[axis][0]
+                    atoms[i]["speed"][axis] = 0
+                elif atoms[i]["coords"][axis] > (WORLD_LIMITS[axis][1] - atoms[i]["radius"]):
+                    atoms[i]["coords"][axis] = WORLD_LIMITS[axis][1]
+                    atoms[i]["speed"][axis] = 0
 
     # for atom in atoms:
     #     atom["coords"] = get_random_coords(atom["radius"])
@@ -142,7 +168,7 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [465, 500],
+        "coords": [455, 500],
         "force": [0, 0],
         "speed": [0, 0],
         "mass": POINT_MASS,
@@ -186,9 +212,9 @@ def update_world():
     global first_run
 
     if not first_run:
-        update_speeds(atoms)
-        calculate_forces(atoms, links)
-        update_coords(atoms)
+        # update_speeds(atoms)
+        # calculate_forces(atoms, links)
+        update_coords(atoms, links)
     else:
         first_run = False
 

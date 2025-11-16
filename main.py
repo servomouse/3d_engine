@@ -4,6 +4,7 @@ import json
 import sys
 import time
 import math
+import copy
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -127,7 +128,16 @@ def get_timestep(atoms, accelerations):
             fastest_idx = i
     num_substeps = math.ceil(max_speed / atoms[fastest_idx]["radius"])
     return 1 / num_substeps if num_substeps > 0 else 0
-    
+
+
+def get_new_position(init_position, velocity, acceleration, timestep):
+    new_position = [init_position[axis] for axis in range(NUM_DIMENSIONS)]
+    for axis in range(NUM_DIMENSIONS):
+        v = velocity[axis]
+        a = acceleration[axis]
+        t = timestep
+        new_position[axis] += v * t + (a * t**2) / 2
+    return new_position
 
 
 def update_coords(atoms, links):
@@ -135,6 +145,7 @@ def update_coords(atoms, links):
     num_steps = 0
     while True:
         calculate_forces(atoms, links)
+        add_gravity(atoms)
 
         accelerations = get_accelerations(atoms)
 
@@ -143,19 +154,21 @@ def update_coords(atoms, links):
             break   # Nothing to change
         if time_passed + ts > 1:
             ts = 1 - time_passed
+
+        new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
         
 
         # Update velocities
         for i in range(len(atoms)):
             for axis in range(NUM_DIMENSIONS):
                 atoms[i]["speed"][axis] += accelerations[i][axis] * ts
-                if axis == VERTICAL_AXIS:
-                    atoms[i]["speed"][axis] +=  G_CONST * ts
+                # if axis == VERTICAL_AXIS:
+                #     atoms[i]["speed"][axis] +=  G_CONST * ts
 
         # Update positions
         for i in range(len(atoms)):
             for axis in range(NUM_DIMENSIONS):
-                atoms[i]["coords"][axis] += atoms[i]["speed"][axis] * ts
+                atoms[i]["coords"][axis] = new_positions[i][axis]
                 if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
                     atoms[i]["coords"][axis] = (WORLD_LIMITS[axis][0] + atoms[i]["radius"]) #  + random.random()
                     atoms[i]["speed"][axis] = 0

@@ -5,6 +5,7 @@ import sys
 import time
 import math
 import copy
+import vector_math as vec
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -52,11 +53,8 @@ def add_gravity(atoms):
         atom["force"][VERTICAL_AXIS] += G_CONST * atom["mass"]
 
 
-def vector_len(vec):
-    s = 0
-    for axis in vec:
-        s += axis**2
-    return math.sqrt(s)
+def atom_add_gravity(atom):
+    atom["force"][VERTICAL_AXIS] += G_CONST * atom["mass"]
 
 
 def calculate_force_vectors(point1, point2, force_value):
@@ -79,8 +77,11 @@ def get_distance(point1, point2):
     return math.sqrt(sum((p2 - p1)**2 for p1, p2 in zip(point1, point2)))
 
 
-def calculate_forces(atoms, links):
+def calculate_forces(atoms, links, atoms_to_process=[]):
     for link in links:
+        if len(atoms_to_process) > 0:
+            if (link["atoms"][0] not in atoms_to_process) and (link["atoms"][0] not in atoms_to_process):
+                continue
         point1 = atoms[link["atoms"][0]]["coords"]
         point2 = atoms[link["atoms"][1]]["coords"]
         link_len = get_distance(point1, point2)
@@ -98,16 +99,27 @@ def apply_drag(v):
     return v - (DRAG_COEFFICIENT * v**2)
 
 
+def get_atom_accelerations(atom):
+    acceleration = []
+    for axis in range(NUM_DIMENSIONS):
+        f = atom["force"][axis]
+        if axis == VERTICAL_AXIS:
+            f += G_CONST
+        acceleration.append(f / atom["mass"])
+        atom["force"][axis] = 0 # Clear force vector after calculating accelerations
+    return acceleration
+
+
 def get_accelerations(atoms):
     accelerations = []
     for i in range(len(atoms)):
-        accelerations.append([])
-        for axis in range(NUM_DIMENSIONS):
-            f = atoms[i]["force"][axis]
-            if axis == VERTICAL_AXIS:
-                f += G_CONST
-            accelerations[-1].append(f / atoms[i]["mass"])
-            atoms[i]["force"][axis] = 0 # Clear force vector after calculating accelerations
+        accelerations.append(get_atom_accelerations(atoms[i]))
+        # for axis in range(NUM_DIMENSIONS):
+        #     f = atoms[i]["force"][axis]
+        #     if axis == VERTICAL_AXIS:
+        #         f += G_CONST
+        #     accelerations[-1].append(f / atoms[i]["mass"])
+        #     atoms[i]["force"][axis] = 0 # Clear force vector after calculating accelerations
     return accelerations
 
 
@@ -122,7 +134,7 @@ def get_timestep(atoms, accelerations):
     max_speed = 0
     fastest_idx = -1
     for i in range(len(atoms)):
-        v = vector_len(sum_vectors(atoms[i]["speed"], accelerations[i]))
+        v = vec.vector_len(sum_vectors(atoms[i]["speed"], accelerations[i]))
         if v > max_speed:
             max_speed = v
             fastest_idx = i
@@ -140,12 +152,29 @@ def get_new_position(init_position, velocity, acceleration, timestep):
     return new_position
 
 
+def detect_collisions(atoms, accelerations, new_positions, timestep):
+    collisions = []
+    for i in range(len(atoms)-1):
+        r1 = atoms[i]["radius"]
+        for j in range(i+1, len(atoms)):
+            r2 = atoms[j]["radius"]
+            d = get_distance(new_positions[i], new_positions[j])
+            if d <= r1 + r2:
+                t = collision_time(atoms[i], atoms[j], accelerations[i], accelerations[j], timestep)
+                print(f"Collision detected between atoms {i} and {j} at time +{t}")
+                collisions.append({
+                    "atoms": [i, j],
+                    "time": t
+                })
+    return collisions
+
+
 def update_coords(atoms, links):
     time_passed = 0
     num_steps = 0
     while True:
         calculate_forces(atoms, links)
-        add_gravity(atoms)
+        # add_gravity(atoms)
 
         accelerations = get_accelerations(atoms)
 
@@ -156,14 +185,36 @@ def update_coords(atoms, links):
             ts = 1 - time_passed
 
         new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
-        
+        collisions = detect_collisions(atoms, accelerations, new_positions, ts)
+        exclude_new_speed_calc = []
+        for c in collisions:
+            i = c["atoms"][0]
+            j = c["atoms"][1]
+            atoms[i]["coords"] = position_at_time(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], c["time"])
+            atoms[j]["coords"] = position_at_time(atoms[j]["coords"], atoms[j]["speed"], accelerations[j], c["time"])
+            atoms[i]["speed"], atoms[j]["speed"] = collide(
+                speed_at_time(atoms[i]["speed"], accelerations[i], c["time"]),
+                speed_at_time(atoms[i]["speed"], accelerations[i], c["time"]),
+                atoms[i]["coords"],
+                atoms[j]["coords"]
+            )
+            remaining_time = ts - c["time"]
+            calculate_forces(atoms, links, [i, j])
+            a1 = get_atom_accelerations(atoms[i])
+            a2 = get_atom_accelerations(atoms[j])
+            new_positions[i] = get_new_position(atoms[i]["coords"], atoms[i]["speed"], a1, remaining_time)
+            new_positions[j] = get_new_position(atoms[j]["coords"], atoms[j]["speed"], a2, remaining_time)
+            atoms[i]["speed"] = speed_at_time(atoms[i]["speed"], a1, remaining_time)
+            atoms[j]["speed"] = speed_at_time(atoms[j]["speed"], a2, remaining_time)
+            exclude_new_speed_calc.extend([i, j])
+
 
         # Update velocities
         for i in range(len(atoms)):
+            if i in exclude_new_speed_calc:
+                continue
             for axis in range(NUM_DIMENSIONS):
                 atoms[i]["speed"][axis] += accelerations[i][axis] * ts
-                # if axis == VERTICAL_AXIS:
-                #     atoms[i]["speed"][axis] +=  G_CONST * ts
 
         # Update positions
         for i in range(len(atoms)):
@@ -207,6 +258,72 @@ def update_coords(atoms, links):
     #             atoms[i]["speed"][axis] = 0
 
 
+def collide(vA, vB, xA, xB):
+    """
+    Compute post-collision velocities of two equal-mass balls in n dimensions.
+    
+    Parameters:
+        vA (list): velocity vector of ball A
+        vB (list): velocity vector of ball B
+        xA (list): position vector of ball A at collision
+        xB (list): position vector of ball B at collision
+    
+    Returns:
+        (list, list): post-collision velocity vectors (vAnew, vBnew)
+    """
+    # Collision normal (unit vector along line of centers)
+    n = vec.sub(xB, xA)
+    n_len = vec.norm(n)
+    n = [ni / n_len for ni in n]
+    
+    # Relative velocity along n
+    rel_vel = vec.dot(vec.sub(vA, vB), n)
+    
+    # Update velocities
+    vAnew = vec.sub(vA, vec.scale(n, rel_vel))
+    vBnew = vec.add(vB, vec.scale(n, rel_vel))
+    
+    return vAnew, vBnew
+
+
+def position_at_time(p, v, a, t):
+    # p + v*t + 0.5*a*t^2
+    return vec.add(vec.add(p, vec.scale(v, t)), vec.scale(a, 0.5*t*t))
+
+
+def speed_at_time(v0, a, t):
+    return vec.add(v0, vec.scale(a, t))
+
+
+def collision_time(atom1, atom2, acceleration1, acceleration2, dt, tolerance=1e-8, max_iter=100):
+    p1, v1, a1, r1 = atom1["coords"], atom1["speed"], acceleration1, atom1["radius"]
+    p2, v2, a2, r2 = atom2["coords"], atom2["speed"], acceleration2, atom2["radius"]
+
+    R = r1 + r2
+
+    def f(t):
+        d = vec.sub(position_at_time(p1, v1, a1, t), position_at_time(p2, v2, a2, t))
+        return vec.dot(d, d) - R*R
+
+    # Check if collision happens within [0, dt]
+    if f(0) <= 0: 
+        return 0.0
+    if f(dt) > 0:
+        return None  # no collision in this step
+
+    # Bisection
+    lo, hi = 0.0, dt
+    for _ in range(max_iter):
+        mid = 0.5*(lo+hi)
+        if f(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+        if hi - lo < tolerance:
+            return mid
+    return 0.5*(lo+hi)
+
+
 # Create the main window
 root = tk.Tk()
 root.title("Moving Circle")
@@ -219,27 +336,27 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [500, 535],
+        "coords": [800, 500],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [-20, 0],
         "mass": POINT_MASS,
         "color": "#0000FF",
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [455, 500],
+        "coords": [200, 500],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [20, 0],
         "mass": POINT_MASS,
         "color": "#00FF00"
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [535, 500],
+        "coords": [600, 500],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [0, 8],
         "mass": POINT_MASS,
         "color": "#FF0000"
     },

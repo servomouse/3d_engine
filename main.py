@@ -194,7 +194,7 @@ def update_coords(atoms, links):
             atoms[j]["coords"] = position_at_time(atoms[j]["coords"], atoms[j]["speed"], accelerations[j], c["time"])
             atoms[i]["speed"], atoms[j]["speed"] = collide(
                 speed_at_time(atoms[i]["speed"], accelerations[i], c["time"]),
-                speed_at_time(atoms[i]["speed"], accelerations[i], c["time"]),
+                speed_at_time(atoms[j]["speed"], accelerations[j], c["time"]),
                 atoms[i]["coords"],
                 atoms[j]["coords"]
             )

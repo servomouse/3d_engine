@@ -172,6 +172,43 @@ def detect_collisions(atoms, accelerations, new_positions, timestep):
 def update_coords(atoms, links):
     time_passed = 0
     num_steps = 0
+    while time_passed < 1:
+        calculate_forces(atoms, links)
+        accelerations = get_accelerations(atoms)
+        ts = get_timestep(atoms, accelerations)
+        if ts == 0:
+            break   # No changes, nothing to update
+        if ts + time_passed > 1:
+            ts = 1 - time_passed    # Trim timestep to end at 1
+        new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
+        c = get_first_collision(atoms, accelerations, new_positions, ts)    # Find thefirst collision within the timestep if any
+        if c:
+            new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], c["time"]) for i in range(len(atoms))]
+            update_velocities(atoms, accelerations, c["time"])
+            if c["type"] == "atom to atom":
+                i = c["atoms"][0]
+                j = c["atoms"][1]
+                atoms[i]["speed"], atoms[j]["speed"] = collide(atoms[i]["speed"], atoms[j]["speed"], atoms[i]["coords"], atoms[j]["coords"])
+            elif c["type"] == "atom to wall":
+                i = c["atoms"][0]
+                axis = c["axis"]
+                limit = c["limit"]
+                atoms[i]["speed"] = collide_with_wall(atoms[i], axis, limit)
+            time_passed += c["time"]
+        else:
+            update_velocities(atoms, accelerations, ts)
+        
+        # Update positions
+        for i in range(len(atoms)):
+            for axis in range(NUM_DIMENSIONS):
+                atoms[i]["coords"][axis] = new_positions[i][axis]
+        
+        num_steps += 1
+        time_passed += ts
+        if time_passed == 1:
+            # print(f"Num steps: {num_steps}")
+            break
+
     while True:
         calculate_forces(atoms, links)
         # add_gravity(atoms)

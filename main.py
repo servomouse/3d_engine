@@ -169,6 +169,47 @@ def detect_collisions(atoms, accelerations, new_positions, timestep):
     return collisions
 
 
+def get_first_atoms_bump(atoms, accelerations, new_positions, timestep):
+    collision = {
+        "atoms": [],
+        "time": timestep
+    }
+    collision_found = False
+    for i in range(len(atoms)-1):
+        r1 = atoms[i]["radius"]
+        for j in range(i+1, len(atoms)):
+            r2 = atoms[j]["radius"]
+            d = get_distance(new_positions[i], new_positions[j])
+            if d <= r1 + r2:
+                t = collision_time(atoms[i], atoms[j], accelerations[i], accelerations[j], timestep)
+                print(f"Collision detected between atoms {i} and {j} at time +{t}")
+                if t < collision["time"]:
+                    collision["atoms"] = [i, j]
+                    collision["time"] = t
+                    collision_found = True
+    if collision_found:
+        return collision
+    return None
+
+
+def get_first_wall_collision(atoms, accelerations, new_positions, timestep):
+    for i in range(len(atoms)):
+        for axis in range(NUM_DIMENSIONS):
+            if new_positions[i][axis] <= WORLD_LIMITS[axis][0]:
+                pass
+            elif new_positions[i][axis] >= WORLD_LIMITS[axis][1]:
+                pass
+
+def get_first_collision(atoms, accelerations, new_positions, ts):
+    atoms_bump = get_first_atoms_bump(atoms, accelerations, new_positions, ts)
+
+
+def update_velocities(atoms, accelerations, ts):
+    for i in range(len(atoms)):
+        for axis in range(NUM_DIMENSIONS):
+            atoms[i]["speed"][axis] += accelerations[i][axis] * ts
+
+
 def update_coords(atoms, links):
     time_passed = 0
     num_steps = 0
@@ -181,19 +222,18 @@ def update_coords(atoms, links):
         if ts + time_passed > 1:
             ts = 1 - time_passed    # Trim timestep to end at 1
         new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
-        c = get_first_collision(atoms, accelerations, new_positions, ts)    # Find thefirst collision within the timestep if any
+        c = get_first_collision(atoms, accelerations, new_positions, ts)    # Find the first collision within the timestep if any
         if c:
             new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], c["time"]) for i in range(len(atoms))]
             update_velocities(atoms, accelerations, c["time"])
             if c["type"] == "atom to atom":
                 i = c["atoms"][0]
                 j = c["atoms"][1]
-                atoms[i]["speed"], atoms[j]["speed"] = collide(atoms[i]["speed"], atoms[j]["speed"], atoms[i]["coords"], atoms[j]["coords"])
+                atoms[i]["speed"], atoms[j]["speed"] = collide_atoms(atoms[i]["speed"], atoms[j]["speed"], atoms[i]["coords"], atoms[j]["coords"])
             elif c["type"] == "atom to wall":
-                i = c["atoms"][0]
+                i = c["atom"]
                 axis = c["axis"]
-                limit = c["limit"]
-                atoms[i]["speed"] = collide_with_wall(atoms[i], axis, limit)
+                atoms[i]["speed"][axis] *= -1
             time_passed += c["time"]
         else:
             update_velocities(atoms, accelerations, ts)
@@ -209,66 +249,66 @@ def update_coords(atoms, links):
             # print(f"Num steps: {num_steps}")
             break
 
-    while True:
-        calculate_forces(atoms, links)
-        # add_gravity(atoms)
+    # while True:
+    #     calculate_forces(atoms, links)
+    #     # add_gravity(atoms)
 
-        accelerations = get_accelerations(atoms)
+    #     accelerations = get_accelerations(atoms)
 
-        ts = get_timestep(atoms, accelerations)
-        if ts == 0:
-            break   # Nothing to change
-        if time_passed + ts > 1:
-            ts = 1 - time_passed
+    #     ts = get_timestep(atoms, accelerations)
+    #     if ts == 0:
+    #         break   # Nothing to change
+    #     if time_passed + ts > 1:
+    #         ts = 1 - time_passed
 
-        new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
-        collisions = detect_collisions(atoms, accelerations, new_positions, ts)
-        exclude_new_speed_calc = []
-        for c in collisions:
-            i = c["atoms"][0]
-            j = c["atoms"][1]
-            atoms[i]["coords"] = position_at_time(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], c["time"])
-            atoms[j]["coords"] = position_at_time(atoms[j]["coords"], atoms[j]["speed"], accelerations[j], c["time"])
-            atoms[i]["speed"], atoms[j]["speed"] = collide(
-                speed_at_time(atoms[i]["speed"], accelerations[i], c["time"]),
-                speed_at_time(atoms[j]["speed"], accelerations[j], c["time"]),
-                atoms[i]["coords"],
-                atoms[j]["coords"]
-            )
-            remaining_time = ts - c["time"]
-            calculate_forces(atoms, links, [i, j])
-            a1 = get_atom_accelerations(atoms[i])
-            a2 = get_atom_accelerations(atoms[j])
-            new_positions[i] = get_new_position(atoms[i]["coords"], atoms[i]["speed"], a1, remaining_time)
-            new_positions[j] = get_new_position(atoms[j]["coords"], atoms[j]["speed"], a2, remaining_time)
-            atoms[i]["speed"] = speed_at_time(atoms[i]["speed"], a1, remaining_time)
-            atoms[j]["speed"] = speed_at_time(atoms[j]["speed"], a2, remaining_time)
-            exclude_new_speed_calc.extend([i, j])
+    #     new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
+    #     collisions = detect_collisions(atoms, accelerations, new_positions, ts)
+    #     exclude_new_speed_calc = []
+    #     for c in collisions:
+    #         i = c["atoms"][0]
+    #         j = c["atoms"][1]
+    #         atoms[i]["coords"] = position_at_time(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], c["time"])
+    #         atoms[j]["coords"] = position_at_time(atoms[j]["coords"], atoms[j]["speed"], accelerations[j], c["time"])
+    #         atoms[i]["speed"], atoms[j]["speed"] = collide_atoms(
+    #             speed_at_time(atoms[i]["speed"], accelerations[i], c["time"]),
+    #             speed_at_time(atoms[j]["speed"], accelerations[j], c["time"]),
+    #             atoms[i]["coords"],
+    #             atoms[j]["coords"]
+    #         )
+    #         remaining_time = ts - c["time"]
+    #         calculate_forces(atoms, links, [i, j])
+    #         a1 = get_atom_accelerations(atoms[i])
+    #         a2 = get_atom_accelerations(atoms[j])
+    #         new_positions[i] = get_new_position(atoms[i]["coords"], atoms[i]["speed"], a1, remaining_time)
+    #         new_positions[j] = get_new_position(atoms[j]["coords"], atoms[j]["speed"], a2, remaining_time)
+    #         atoms[i]["speed"] = speed_at_time(atoms[i]["speed"], a1, remaining_time)
+    #         atoms[j]["speed"] = speed_at_time(atoms[j]["speed"], a2, remaining_time)
+    #         exclude_new_speed_calc.extend([i, j])
 
 
-        # Update velocities
-        for i in range(len(atoms)):
-            if i in exclude_new_speed_calc:
-                continue
-            for axis in range(NUM_DIMENSIONS):
-                atoms[i]["speed"][axis] += accelerations[i][axis] * ts
+    #     # Update velocities
+    #     for i in range(len(atoms)):
+    #         if i in exclude_new_speed_calc:
+    #             continue
+    #         for axis in range(NUM_DIMENSIONS):
+    #             atoms[i]["speed"][axis] += accelerations[i][axis] * ts
 
-        # Update positions
-        for i in range(len(atoms)):
-            for axis in range(NUM_DIMENSIONS):
-                atoms[i]["coords"][axis] = new_positions[i][axis]
-                if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
-                    atoms[i]["coords"][axis] = (WORLD_LIMITS[axis][0] + atoms[i]["radius"]) #  + random.random()
-                    atoms[i]["speed"][axis] = 0
-                elif atoms[i]["coords"][axis] > (WORLD_LIMITS[axis][1] - atoms[i]["radius"]):
-                    atoms[i]["coords"][axis] = (WORLD_LIMITS[axis][1] - atoms[i]["radius"]) #  - random.random()
-                    atoms[i]["speed"][axis] = 0
+    #     # Update positions
+    #     for i in range(len(atoms)):
+    #         for axis in range(NUM_DIMENSIONS):
+    #             atoms[i]["coords"][axis] = new_positions[i][axis]
+    #             if atoms[i]["coords"][axis] < (WORLD_LIMITS[axis][0] + atoms[i]["radius"]):
+    #                 atoms[i]["coords"][axis] = (WORLD_LIMITS[axis][0] + atoms[i]["radius"]) #  + random.random()
+    #                 atoms[i]["speed"][axis] = 0
+    #             elif atoms[i]["coords"][axis] > (WORLD_LIMITS[axis][1] - atoms[i]["radius"]):
+    #                 atoms[i]["coords"][axis] = (WORLD_LIMITS[axis][1] - atoms[i]["radius"]) #  - random.random()
+    #                 atoms[i]["speed"][axis] = 0
 
-        num_steps += 1
-        time_passed += ts
-        if time_passed == 1:
-            # print(f"Num steps: {num_steps}")
-            break
+    #     num_steps += 1
+    #     time_passed += ts
+    #     if time_passed == 1:
+    #         # print(f"Num steps: {num_steps}")
+    #         break
 
     # time_step = 1
 
@@ -295,7 +335,11 @@ def update_coords(atoms, links):
     #             atoms[i]["speed"][axis] = 0
 
 
-def collide(vA, vB, xA, xB):
+def collide_with_wall(atom, axis):
+    atom["speed"][axis] *= -1
+
+
+def collide_atoms(vA, vB, xA, xB):
     """
     Compute post-collision velocities of two equal-mass balls in n dimensions.
     

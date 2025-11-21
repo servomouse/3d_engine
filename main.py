@@ -148,7 +148,7 @@ def get_new_position(init_position, velocity, acceleration, timestep):
         v = velocity[axis]
         a = acceleration[axis]
         t = timestep
-        new_position[axis] += v * t + (a * t**2) / 2
+        new_position[axis] = round(new_position[axis] + v * t + (a * t**2) / 2, 6)
     return new_position
 
 
@@ -171,6 +171,7 @@ def detect_collisions(atoms, accelerations, new_positions, timestep):
 
 def get_first_atoms_bump(atoms, accelerations, new_positions, timestep):
     collision = {
+        "type": "atom to atom",
         "atoms": [],
         "time": timestep
     }
@@ -192,16 +193,75 @@ def get_first_atoms_bump(atoms, accelerations, new_positions, timestep):
     return None
 
 
+def get_first_wall_collision_time(initial_position, velocity, acceleration, target_coordinate):
+    a = 0.5 * acceleration
+    b = velocity
+    c = initial_position - target_coordinate
+
+    discriminant = b**2 - 4 * a * c
+
+    if discriminant < 0:
+        raise Exception("No real solutions!")
+
+    sqrt_discriminant = discriminant**0.5
+    t1 = (-b + sqrt_discriminant) / (2 * a) if a != 0 else -c / b
+    t2 = (-b - sqrt_discriminant) / (2 * a) if a != 0 else -c / b
+
+    positive_solutions = []
+    if t1 >= 0:
+        positive_solutions.append(t1)
+    if t2 >= 0 and t2 != t1:
+        positive_solutions.append(t2)
+
+    if len(positive_solutions) == 1:
+        return positive_solutions[0]
+    elif len(positive_solutions) == 2:
+        return min(*positive_solutions)
+    print(f"{initial_position = }, {velocity = }, {acceleration = }, {target_coordinate = }")
+    raise Exception("No collision time was found!")
+
+
 def get_first_wall_collision(atoms, accelerations, new_positions, timestep):
+    collision = {
+        "type": "atom to wall",
+        "atom": [],
+        "time": timestep,
+        "axis": None
+    }
+    collision_found = False
     for i in range(len(atoms)):
         for axis in range(NUM_DIMENSIONS):
+            t = timestep
             if new_positions[i][axis] <= WORLD_LIMITS[axis][0]:
-                pass
+                t = get_first_wall_collision_time(atoms[i]["coords"][axis], atoms[i]["speed"][axis], accelerations[i][axis], WORLD_LIMITS[axis][0])
             elif new_positions[i][axis] >= WORLD_LIMITS[axis][1]:
-                pass
+                t = get_first_wall_collision_time(atoms[i]["coords"][axis], atoms[i]["speed"][axis], accelerations[i][axis], WORLD_LIMITS[axis][1])
+            else:
+                continue
+            try:
+                if t < collision["time"]:
+                    collision["time"] = t
+                    collision["atom"] = i
+                    collision["axis"] = axis
+                    collision_found = True
+            except TypeError:
+                raise Exception(f"{t = }, {collision['time'] = }")
+
+    if collision_found:
+        return collision
+    return None
 
 def get_first_collision(atoms, accelerations, new_positions, ts):
     atoms_bump = get_first_atoms_bump(atoms, accelerations, new_positions, ts)
+    wall_bump = get_first_wall_collision(atoms, accelerations, new_positions, ts)
+    if atoms_bump and wall_bump:
+        if atoms_bump["time"] < wall_bump["time"]:
+            return atoms_bump
+    if wall_bump:
+        return wall_bump
+    if atoms_bump:
+        return atoms_bump
+    return None
 
 
 def update_velocities(atoms, accelerations, ts):

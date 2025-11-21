@@ -19,6 +19,7 @@ G_CONST = -0.98
 VERTICAL_AXIS = 1
 ATOM_RADIUS = 10
 POINT_MASS = 1  # 1 gramm
+MAX_RELATIVE_SPEED = 100
 
 
 # Returns atom id
@@ -84,18 +85,31 @@ def calculate_forces(atoms, links, atoms_to_process=[]):
                 continue
         point1 = atoms[link["atoms"][0]]["coords"]
         point2 = atoms[link["atoms"][1]]["coords"]
+        vel1 = atoms[link["atoms"][0]]['speed']
+        vel2 = atoms[link["atoms"][1]]['speed']
+        link_vector = vec.sub(point1, point2)
+        unit_link_vector = vec.normalize(link_vector)
+        relative_velocity = vec.sub(vel2, vel1)
+        relative_velocity_along_link = vec.dot(relative_velocity, unit_link_vector)
+        damping_coefficient = 1.0  # Set it to 1.0 for this example
+        damping_ratio = min(1, abs(relative_velocity_along_link) / MAX_RELATIVE_SPEED)
+        damping_force_on_atom1 = [-damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
+        damping_force_on_atom2 = [damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
+
         link_len = get_distance(point1, point2)
         force = (link_len - link["length"]) * link["stiffness"]
         force_p1, force_p2 = calculate_force_vectors(point1, point2, force)
+        total_force_on_atom1 = [force_p1[i] + damping_force_on_atom1[i] for i in range(NUM_DIMENSIONS)]
+        total_force_on_atom2 = [force_p2[i] + damping_force_on_atom2[i] for i in range(NUM_DIMENSIONS)]
         for i in range(NUM_DIMENSIONS):
-            atoms[link["atoms"][0]]["force"][i] += force_p1[i]
-            atoms[link["atoms"][1]]["force"][i] += force_p2[i]
+            atoms[link["atoms"][0]]["force"][i] += total_force_on_atom1[i]
+            atoms[link["atoms"][1]]["force"][i] += total_force_on_atom2[i]
 
 
-def apply_drag(v):
-    if v < 0:
-        return v + (DRAG_COEFFICIENT * v**2)
-    return v - (DRAG_COEFFICIENT * v**2)
+# def apply_drag(v):
+#     if v < 0:
+#         return v + (DRAG_COEFFICIENT * v**2)
+#     return v - (DRAG_COEFFICIENT * v**2)
 
 
 def get_atom_accelerations(atom):
@@ -304,10 +318,6 @@ def update_coords(atoms, links):
         time_passed += ts
         if time_passed == 1:
             break
-
-
-def collide_with_wall(atom, axis):
-    atom["speed"][axis] *= -1
 
 
 def collide_atoms(vA, vB, xA, xB):

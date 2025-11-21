@@ -31,3 +31,16 @@ def vector_len(vec):
     for axis in vec:
         s += axis**2
     return math.sqrt(s)
+
+
+def magnitude(v):
+    """Calculate the magnitude of vector v."""
+    return math.sqrt(sum(x**2 for x in v))
+
+
+def normalize(v):
+    """Normalize vector v."""
+    mag = magnitude(v)
+    if mag == 0:
+        return [0, 0, 0]  # Return a zero vector if the magnitude is zero
+    return [x / mag for x in v]

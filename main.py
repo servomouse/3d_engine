@@ -435,7 +435,7 @@ def collide_atoms(vA, vB, xA, xB):
     n = [ni / n_len for ni in n]
     
     # Relative velocity along n
-    rel_vel = vec.dot(vec.sub(vA, vB), n)
+    rel_vel = vec.dot(vec.sub(vA, vB), n) * 0.9
     
     # Update velocities
     vAnew = vec.sub(vA, vec.scale(n, rel_vel))

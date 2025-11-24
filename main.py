@@ -6,6 +6,7 @@ import time
 import math
 import copy
 import vector_math as vec
+from pid import pid_force
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -78,32 +79,104 @@ def get_distance(point1, point2):
     return math.sqrt(sum((p2 - p1)**2 for p1, p2 in zip(point1, point2)))
 
 
+def get_relative_velocities(velocity_a, velocity_b):
+    """
+    Calculate the speed at which two points move toward each other.
+
+    Parameters:
+    velocity_a (list): Velocity vector for point A.
+    velocity_b (list): Velocity vector for point B.
+
+    Returns:
+    (float, float): Two values indicating how fast point A is moving towards B and
+                    how fast point B is moving towards A.
+    """
+    # Calculate the direction from A to B
+    direction_ab = [b - a for a, b in zip(velocity_a, velocity_b)]
+    
+    # Calculate the magnitude of this direction vector
+    distance_magnitude = vec.magnitude(direction_ab)
+    
+    # Calculate the relative velocity vector of A towards B
+    if distance_magnitude != 0:
+        speed_a_towards_b = vec.dot(velocity_a, direction_ab) / distance_magnitude
+        relative_velocity_a = [(speed_a_towards_b * d / distance_magnitude) for d in direction_ab]
+    else:
+        relative_velocity_a = [0 for _ in velocity_a]  # No movement if points are the same
+
+    # Calculate the relative velocity vector of B towards A
+    if distance_magnitude != 0:
+        speed_b_towards_a = vec.dot(velocity_b, [-d for d in direction_ab]) / distance_magnitude
+        relative_velocity_b = [(-speed_b_towards_a * d / distance_magnitude) for d in direction_ab]
+    else:
+        relative_velocity_b = [0 for _ in velocity_b]  # No movement if points are the same
+
+    return relative_velocity_a, relative_velocity_b
+
+
+def find_link_target_points(p0, p1, target_length):
+    link_length = get_distance(p0, p1)
+    coeff = target_length/link_length
+    middle_point = [(x0 + x1) / 2 for x0, x1 in zip(p0, p1)]
+    target_point_0 = [middle_point[i] + coeff * (p0[i] - middle_point[i]) for i in range(NUM_DIMENSIONS)]
+    target_point_1 = [middle_point[i] + coeff * (p1[i] - middle_point[i]) for i in range(NUM_DIMENSIONS)]
+    return target_point_0, target_point_1
+
+
 def calculate_forces(atoms, links, atoms_to_process=[]):
     for link in links:
         if len(atoms_to_process) > 0:
             if (link["atoms"][0] not in atoms_to_process) and (link["atoms"][0] not in atoms_to_process):
                 continue
-        point1 = atoms[link["atoms"][0]]["coords"]
-        point2 = atoms[link["atoms"][1]]["coords"]
-        vel1 = atoms[link["atoms"][0]]['speed']
-        vel2 = atoms[link["atoms"][1]]['speed']
-        link_vector = vec.sub(point1, point2)
-        unit_link_vector = vec.normalize(link_vector)
-        relative_velocity = vec.sub(vel2, vel1)
-        relative_velocity_along_link = vec.dot(relative_velocity, unit_link_vector)
-        damping_coefficient = 1.0  # Set it to 1.0 for this example
-        damping_ratio = min(1, abs(relative_velocity_along_link) / MAX_RELATIVE_SPEED)
-        damping_force_on_atom1 = [-damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
-        damping_force_on_atom2 = [damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
+        point0 = atoms[link["atoms"][0]]["coords"]
+        point1 = atoms[link["atoms"][1]]["coords"]
+        # v0 = atoms[link["atoms"][0]]["speed"]
+        # v1 = atoms[link["atoms"][1]]["speed"]
+        target_point_0, target_point_1 = find_link_target_points(point0, point1, link["length"])
+        error = get_distance(point0, point1) - link["length"]
+        p0_res = pid_force(point0, target_point_0, error, link["stiffness"], link["integral_error"][0], link["previous_error"][0])
+        p1_res = pid_force(point1, target_point_1, error, link["stiffness"], link["integral_error"][1], link["previous_error"][1])
 
-        link_len = get_distance(point1, point2)
-        force = (link_len - link["length"]) * link["stiffness"]
-        force_p1, force_p2 = calculate_force_vectors(point1, point2, force)
-        total_force_on_atom1 = [force_p1[i] + damping_force_on_atom1[i] for i in range(NUM_DIMENSIONS)]
-        total_force_on_atom2 = [force_p2[i] + damping_force_on_atom2[i] for i in range(NUM_DIMENSIONS)]
+        link["integral_error"][0] = p0_res["integral_error"]
+        link["previous_error"][0] = p0_res["previous_error"]
+        # force_p0 = p0_res["force"]
+
+        link["integral_error"][1] = p1_res["integral_error"]
+        link["previous_error"][1] = p1_res["previous_error"]
+        # force_p1 = p1_res["force"]
+
         for i in range(NUM_DIMENSIONS):
-            atoms[link["atoms"][0]]["force"][i] += total_force_on_atom1[i]
-            atoms[link["atoms"][1]]["force"][i] += total_force_on_atom2[i]
+            atoms[link["atoms"][0]]["force"][i] += p0_res["force"][i]
+            atoms[link["atoms"][1]]["force"][i] += p1_res["force"][i]
+
+        # vel1 = atoms[link["atoms"][0]]['speed']
+        # vel2 = atoms[link["atoms"][1]]['speed']
+        # link_vector = vec.sub(point0, point1)
+        # # unit_link_vector = vec.normalize(link_vector)
+        # # relative_velocity = vec.sub(vel2, vel1)
+        # # relative_velocity_along_link = vec.dot(relative_velocity, unit_link_vector)
+        # damping_coefficient = -0.1  # Set it to 1.0 for this example
+        # # damping_ratio = min(1, abs(relative_velocity_along_link) / MAX_RELATIVE_SPEED)
+        # # damping_force_on_atom1 = [-damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
+        # # damping_force_on_atom2 = [damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
+        # # vel1_proj = vec.vector_projection(link_vector, vel1)
+        # # vel2_proj = vec.vector_projection(link_vector, vel2)
+        # rel_vel1, rel_vel2 = get_relative_velocities(vel1, vel2)
+
+        # # for axis in range(NUM_DIMENSIONS):
+        # #     atoms[link["atoms"][0]]['speed'][axis] -= 0.9 * vel1_proj[axis]
+        # #     atoms[link["atoms"][1]]['speed'][axis] -= 0.9 * vel2_proj[axis]
+
+        # link_len = get_distance(point0, point1)
+        # force = (link_len - link["length"]) * link["stiffness"] * 0.2
+        # force_p1, force_p2 = calculate_force_vectors(point0, point1, force)
+        # total_force_on_atom1 = [force_p1[i] + rel_vel1[i] * damping_coefficient for i in range(NUM_DIMENSIONS)]
+        # total_force_on_atom2 = [force_p2[i] + rel_vel2[i] * damping_coefficient for i in range(NUM_DIMENSIONS)]
+        # for i in range(NUM_DIMENSIONS):
+        #     # atoms[link["atoms"][0]]["force"][i] += force_p1[i]
+        #     # atoms[link["atoms"][1]]["force"][i] += force_p2[i]
+        #     atoms[link["atoms"][0]]["force"][i] += total_force_on_atom1[i]
+        #     atoms[link["atoms"][1]]["force"][i] += total_force_on_atom2[i]
 
 
 # def apply_drag(v):
@@ -364,13 +437,16 @@ def collision_time(atom1, atom2, acceleration1, acceleration2, dt, tolerance=1e-
     R = r1 + r2
 
     def f(t):
-        d = vec.sub(position_at_time(p1, v1, a1, t), position_at_time(p2, v2, a2, t))
-        return vec.dot(d, d) - R*R
+        d = get_distance(get_new_position(p1, v1, a1, t), get_new_position(p2, v2, a2, t))
+        # d = vec.sub(position_at_time(p1, v1, a1, t), position_at_time(p2, v2, a2, t))
+        # return vec.dot(d, d) - R*R
+        return d - R
 
     # Check if collision happens within [0, dt]
     if f(0) <= 0: 
         return 0.0
     if f(dt) > 0:
+        print(f"{atom1 = }\n{atom2 = }\n, {acceleration1 = }\n{acceleration2 = }\n{dt = }")
         return None  # no collision in this step
 
     # Bisection
@@ -403,60 +479,123 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [800, 500],
+        "coords": [450, 500],
+        "prev_coords": [450, 500],
+        "path": [0 for _ in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [-20, 0],
+        "prev_speed": [-20, 0],
+        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
+        "inv_mass": 1/POINT_MASS,
         "color": "#0000FF",
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [200, 500],
+        "coords": [500, 550],
+        "prev_coords": [500, 550],
+        "path": [0 for _ in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [20, 0],
+        "prev_speed": [20, 0],
+        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
+        "inv_mass": 1/POINT_MASS,
         "color": "#00FF00"
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [600, 500],
+        "coords": [550, 500],
+        "prev_coords": [550, 500],
+        "path": [0 for _ in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [0, 8],
+        "prev_speed": [0, 8],
+        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
+        "inv_mass": 1/POINT_MASS,
         "color": "#FF0000"
     },
 ]
 
 links = [
-    {
-        "atoms": [0, 1],
-        "length": 70,
-        "stiffness": 10,
-        "id": None
-    },
-    {
-        "atoms": [1, 2],
-        "length": 70,
-        "stiffness": 10,
-        "id": None
-    },
-    {
-        "atoms": [2, 0],
-        "length": 70,
-        "stiffness": 10,
-        "id": None
-    },
+    # {
+    #     "atoms": [0, 1],
+    #     "length": 70,
+    #     "stiffness": 10,
+    #     "id": None,
+    #     "integral_error": [None, None],
+    #     "previous_error": [None, None]
+    # },
+    # {
+    #     "atoms": [1, 2],
+    #     "length": 70,
+    #     "stiffness": 10,
+    #     "id": None,
+    #     "integral_error": [None, None],
+    #     "previous_error": [None, None]
+    # },
+    # {
+    #     "atoms": [2, 0],
+    #     "length": 70,
+    #     "stiffness": 10,
+    #     "id": None,
+    #     "integral_error": [None, None],
+    #     "previous_error": [None, None]
+    # },
 ]
 
+def update_coords_new(atoms, links, ts=1):
+    for atom in atoms:
+        atom["speed"][VERTICAL_AXIS] = atom["speed"][VERTICAL_AXIS] + G_CONST * ts  # Add gravity
+        for axis in range(NUM_DIMENSIONS):
+            atom["prev_coords"][axis] = atom["coords"][axis]
+            atom["coords"][axis] += atom["speed"][axis] * ts
+            atom["path"][axis] = atom["coords"][axis] - atom["prev_coords"][axis]
+        print(f"{atom['path'] = }, {atom['prev_coords'] = }")
+        
+
+    for atom in atoms:
+        for axis in range(NUM_DIMENSIONS):
+            if atom["coords"][axis] < WORLD_LIMITS[axis][0]:
+                d = (WORLD_LIMITS[axis][0] - atom["coords"][axis])
+                atom["path"][axis] = (atom["path"][axis] + d * 0.1) * -1
+                atom["coords"][axis] = d * 0.9
+                # atom["invert_speed"][axis] = 1
+                print("Hit 0-th wall")
+                print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
+            elif atom["coords"][axis] > WORLD_LIMITS[axis][1]:
+                d = atom["coords"][axis] - WORLD_LIMITS[axis][1]
+                atom["path"][axis] = (atom["path"][axis] - d * 0.1) * -1
+                atom["coords"][axis] = WORLD_LIMITS[axis][1] - d * 0.9
+                # atom["invert_speed"][axis] = 1
+                print("Hit 1-th wall")
+                print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
+        print(f"Updated {atom['path'] = }, {atom['coords'] = }")
+        # sys.exit()
+
+    for atom in atoms:
+        for axis in range(NUM_DIMENSIONS):
+            atom["speed"][axis] = atom["path"][axis] / ts
+            if atom["invert_speed"][axis]:
+                atom["speed"][axis] *= -1
+                atom["invert_speed"][axis] = 0
+
+
+# atom['path'] =         [20.0, -25.480000000000388], atom['prev_coords'] = [1000.0, 231.49999999999417]
+# Updated atom['path'] = [20.0, -25.480000000000388], atom['coords'] =      [1020.0, 206.0199999999938], d = 980.0
+
 first_run = True
+counter = 0
 
 def update_world():
-    global first_run
+    global first_run, counter
 
     if not first_run:
-        update_coords(atoms, links)
+        update_coords_new(atoms, links)
+        counter += 1
     else:
         first_run = False
 
@@ -469,8 +608,10 @@ def update_world():
         if link["id"] is not None:
             canvas.delete(link["id"])
         link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
-    # time.sleep(10)
-    # sys.exit()
+    print(f"{counter = }")
+    # time.sleep(1)
+    # if counter == 27:
+    #     sys.exit()
 
 
     root.after(40, update_world)

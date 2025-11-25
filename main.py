@@ -25,7 +25,7 @@ MAX_RELATIVE_SPEED = 100
 
 # Returns atom id
 def draw_atom(canvas, coords, radius, color):
-    print(f"Drawing an atom at {coords}")
+    # print(f"Drawing an atom at {coords}")
     return canvas.create_oval(
         coords[0] - radius, WINDOW_HEIGHT - (coords[1] - radius),  # Top-left corner
         coords[0] + radius, WINDOW_HEIGHT - (coords[1] + radius),  # Bottom-right corner
@@ -550,38 +550,82 @@ links = [
     # },
 ]
 
-def update_coords_new(atoms, links, ts=1):
-    for atom in atoms:
-        # atom["speed"][VERTICAL_AXIS] = atom["speed"][VERTICAL_AXIS] + G_CONST * ts  # Add gravity
-        for axis in range(NUM_DIMENSIONS):
-            atom["prev_coords"][axis] = atom["coords"][axis]
-            # if axis == VERTICAL_AXIS:
+def time_to_fall(height, init_velocity):
+    g = -G_CONST  # acceleration due to gravity in m/s^2
+
+    a = 0.5 * g
+    b = init_velocity
+    c = -(height - WORLD_LIMITS[VERTICAL_AXIS][0])
+
+    # Calculate the discriminant
+    discriminant = b**2 - 4 * a * c
+
+    if discriminant < 0:
+        return None  # No real solution, object never reaches the ground
+    
+    multiplier = 1 if init_velocity >= 0 else -1
+
+    # Calculate two possible times
+    t1 = multiplier * (-b + math.sqrt(discriminant)) / (2 * a)
+    t2 = multiplier * (-b - math.sqrt(discriminant)) / (2 * a)
+    # print(f"{height = }, {init_velocity = }, {t1 = }, {t2 = }")
+
+    # We only want the positive time
+    return max(t1, t2)
+
+
+def atom_process_accelerations(atom, ts):
+    for axis in range(NUM_DIMENSIONS):
+        atom["prev_coords"][axis] = atom["coords"][axis]
+        # if axis == VERTICAL_AXIS:
+        if axis == VERTICAL_AXIS:
+            new_pos = atom["coords"][axis] + atom["speed"][axis] * ts + 0.5 * atom["acceleration"][axis] * ts**2
+            if new_pos <= WORLD_LIMITS[axis][0]:
+                t1 = time_to_fall(atom["coords"][axis], atom["speed"][axis])
+                if t1 >= ts:
+                    raise Exception(f"{t1 = }, {ts = }")
+                t2 = ts - t1
+                v_temp = atom["speed"][axis] + atom["acceleration"][axis] * t1  # Time when reaches 0
+                v_temp *= -0.9  # Invert and decrease
+                v1 = v_temp + atom["acceleration"][axis] * t2
+                new_pos = WORLD_LIMITS[axis][0] + v_temp * t2 + 0.5 * atom["acceleration"][axis] * t2**2
+                if new_pos < 0: # Handle multiple small bumps case
+                    new_pos = 0
+                    v1 = 0
+            else:
+                v1 = atom["speed"][axis] + atom["acceleration"][axis] * ts
+            t = abs(-atom["speed"][axis]/G_CONST)
+            if atom["speed"][axis] > 0 and v1 < 0:
+                apogee = atom["coords"][axis] + atom["speed"][axis] * ts + 0.5 * atom["acceleration"][axis] * t**2
+                print(f"Apogee: {apogee}")
+            atom["coords"][axis] = round(new_pos, 6)
+        else:
             atom["coords"][axis] += atom["speed"][axis] * ts + 0.5 * atom["acceleration"][axis] * ts**2
             v1 = atom["speed"][axis] + atom["acceleration"][axis] * ts
-            atom["path"][axis] = v1 * ts
-            # else:
-            #     atom["coords"][axis] += atom["speed"][axis] * ts
-            #     atom["path"][axis] = atom["coords"][axis] - atom["prev_coords"][axis]
-        print(f"{atom['path'] = }, {atom['prev_coords'] = }")
-        
+        atom["path"][axis] = v1 * ts
+
+
+def update_coords_new(atoms, links, ts=1):
+    for atom in atoms:
+        atom_process_accelerations(atom, ts)
 
     for atom in atoms:
         for axis in range(NUM_DIMENSIONS):
             if atom["coords"][axis] < WORLD_LIMITS[axis][0]:
+                print(f"Hit 0-th wall, {atom['coords'][axis] = }")
                 d = (WORLD_LIMITS[axis][0] - atom["coords"][axis])
                 atom["path"][axis] = (atom["path"][axis] + d * 0.2) * -1
                 atom["coords"][axis] = d * 0.8
                 # atom["invert_speed"][axis] = 1
-                print("Hit 0-th wall")
-                print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
+                # print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
             elif atom["coords"][axis] > WORLD_LIMITS[axis][1]:
                 d = atom["coords"][axis] - WORLD_LIMITS[axis][1]
                 atom["path"][axis] = (atom["path"][axis] - d * 0.2) * -1
                 atom["coords"][axis] = WORLD_LIMITS[axis][1] - d * 0.8
                 # atom["invert_speed"][axis] = 1
-                print("Hit 1-th wall")
-                print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
-        print(f"Updated {atom['path'] = }, {atom['coords'] = }")
+                # print("Hit 1-th wall")
+                # print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
+        # print(f"Updated {atom['path'] = }, {atom['coords'] = }")
         # sys.exit()
 
     for atom in atoms:
@@ -616,7 +660,7 @@ def update_world():
         if link["id"] is not None:
             canvas.delete(link["id"])
         link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
-    print(f"{counter = }")
+    print(f"\r{counter = }", end="")
     # time.sleep(1)
     # if counter == 27:
     #     sys.exit()

@@ -482,6 +482,7 @@ atoms = [
         "coords": [450, 500],
         "prev_coords": [450, 500],
         "path": [0 for _ in range(NUM_DIMENSIONS)],
+        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [-20, 0],
         "prev_speed": [-20, 0],
@@ -496,6 +497,7 @@ atoms = [
         "coords": [500, 550],
         "prev_coords": [500, 550],
         "path": [0 for _ in range(NUM_DIMENSIONS)],
+        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [20, 0],
         "prev_speed": [20, 0],
@@ -510,6 +512,7 @@ atoms = [
         "coords": [550, 500],
         "prev_coords": [550, 500],
         "path": [0 for _ in range(NUM_DIMENSIONS)],
+        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [0, 8],
         "prev_speed": [0, 8],
@@ -549,11 +552,16 @@ links = [
 
 def update_coords_new(atoms, links, ts=1):
     for atom in atoms:
-        atom["speed"][VERTICAL_AXIS] = atom["speed"][VERTICAL_AXIS] + G_CONST * ts  # Add gravity
+        # atom["speed"][VERTICAL_AXIS] = atom["speed"][VERTICAL_AXIS] + G_CONST * ts  # Add gravity
         for axis in range(NUM_DIMENSIONS):
             atom["prev_coords"][axis] = atom["coords"][axis]
-            atom["coords"][axis] += atom["speed"][axis] * ts
-            atom["path"][axis] = atom["coords"][axis] - atom["prev_coords"][axis]
+            # if axis == VERTICAL_AXIS:
+            atom["coords"][axis] += atom["speed"][axis] * ts + 0.5 * atom["acceleration"][axis] * ts**2
+            v1 = atom["speed"][axis] + atom["acceleration"][axis] * ts
+            atom["path"][axis] = v1 * ts
+            # else:
+            #     atom["coords"][axis] += atom["speed"][axis] * ts
+            #     atom["path"][axis] = atom["coords"][axis] - atom["prev_coords"][axis]
         print(f"{atom['path'] = }, {atom['prev_coords'] = }")
         
 
@@ -561,15 +569,15 @@ def update_coords_new(atoms, links, ts=1):
         for axis in range(NUM_DIMENSIONS):
             if atom["coords"][axis] < WORLD_LIMITS[axis][0]:
                 d = (WORLD_LIMITS[axis][0] - atom["coords"][axis])
-                atom["path"][axis] = (atom["path"][axis] + d * 0.1) * -1
-                atom["coords"][axis] = d * 0.9
+                atom["path"][axis] = (atom["path"][axis] + d * 0.2) * -1
+                atom["coords"][axis] = d * 0.8
                 # atom["invert_speed"][axis] = 1
                 print("Hit 0-th wall")
                 print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")
             elif atom["coords"][axis] > WORLD_LIMITS[axis][1]:
                 d = atom["coords"][axis] - WORLD_LIMITS[axis][1]
-                atom["path"][axis] = (atom["path"][axis] - d * 0.1) * -1
-                atom["coords"][axis] = WORLD_LIMITS[axis][1] - d * 0.9
+                atom["path"][axis] = (atom["path"][axis] - d * 0.2) * -1
+                atom["coords"][axis] = WORLD_LIMITS[axis][1] - d * 0.8
                 # atom["invert_speed"][axis] = 1
                 print("Hit 1-th wall")
                 print(f"Updated {atom['path'] = }, {atom['coords'] = }, {d = }")

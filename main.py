@@ -22,7 +22,7 @@ ATOM_RADIUS = 10
 POINT_MASS = 1  # 1 gramm
 MAX_RELATIVE_SPEED = 100
 DAMPING_FACTOR = 5
-STIFFNESS = 5
+STIFFNESS = 75
 
 
 # Returns atom id
@@ -168,8 +168,9 @@ def find_link_target_points(p0, p1, target_length):
 
 
 def calculate_forces(atoms, links, timestep=1):
-    NUM_ITERATIONS = 20
+    NUM_ITERATIONS = 10
     num_atoms = len(atoms)
+    new_link_len = 0
 
     def _get_atom_accelerations(mass, force_vector):
         acceleration = []
@@ -189,16 +190,17 @@ def calculate_forces(atoms, links, timestep=1):
         point1 = atoms[link["atoms"][1]]["coords"]
 
         link_len = get_distance(point0, point1)
+        print(f"{link_len = }, {link['length'] = }, {point0 = }, {point1 = }")
         force = link_len - link["length"]
         force_p1, force_p2 = calculate_force_vectors(point0, point1, force)
         for i in range(NUM_DIMENSIONS):
-            init_forces[link["atoms"][0]][i] += force_p1[i]
-            init_forces[link["atoms"][1]][i] += force_p2[i]
+            init_forces[link["atoms"][0]][i] += force_p1[i] * link["stiffness"]
+            init_forces[link["atoms"][1]][i] += force_p2[i] * link["stiffness"]
     
     temp_forces = [[init_forces[i][j] for j in range(NUM_DIMENSIONS)] for i in range(num_atoms)]
 
     for iter in range(NUM_ITERATIONS):
-        average_forces = [[init_forces[i][j] + temp_forces[i][j] for j in range(NUM_DIMENSIONS)]for i in range(num_atoms)]
+        average_forces = [[(init_forces[i][j] + temp_forces[i][j])/2 for j in range(NUM_DIMENSIONS)]for i in range(num_atoms)]
         accelerations = [_get_atom_accelerations(atoms[i]["mass"], average_forces[i]) for i in range(num_atoms)]
         new_positions = [_get_atom_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], timestep) for i in range(num_atoms)]
         new_forces = [[0 for j in range(NUM_DIMENSIONS)] for i in range(num_atoms)]
@@ -208,89 +210,162 @@ def calculate_forces(atoms, links, timestep=1):
             point1 = new_positions[link["atoms"][1]]
 
             link_len = get_distance(point0, point1)
+            new_link_len = link_len
             force = link_len - link["length"]
             force_p1, force_p2 = calculate_force_vectors(point0, point1, force)
             for i in range(NUM_DIMENSIONS):
-                new_forces[link["atoms"][0]][i] += force_p1[i]
-                new_forces[link["atoms"][1]][i] += force_p2[i]
+                new_forces[link["atoms"][0]][i] += force_p1[i] * link["stiffness"]
+                new_forces[link["atoms"][1]][i] += force_p2[i] * link["stiffness"]
 
         for i in range(num_atoms):
             for j in range(NUM_DIMENSIONS):
                 temp_forces[i][j] = new_forces[i][j]
+        print(f"{iter = }, {temp_forces = }, {new_positions = }")
 
     for link in links:
         vel1 = atoms[link["atoms"][0]]['speed']
         vel2 = atoms[link["atoms"][1]]['speed']
+        rel_vel = new_link_len - link["length"]
         rel_vel1, rel_vel2 = relative_velocities_to_center(atoms[link["atoms"][0]]['coords'], vel1, atoms[link["atoms"][1]]['coords'], vel2)
         for i in range(NUM_DIMENSIONS):
             f1 = ((init_forces[link["atoms"][0]][i] + temp_forces[link["atoms"][0]][i]) / 2) * link["stiffness"]
             f2 = ((init_forces[link["atoms"][1]][i] + temp_forces[link["atoms"][1]][i]) / 2) * link["stiffness"]
-            atoms[link["atoms"][0]]["force"][i] += f1 - (link["damping"] * rel_vel1[i])
-            atoms[link["atoms"][1]]["force"][i] += f2 - (link["damping"] * rel_vel2[i])
-
-        # # v0 = atoms[link["atoms"][0]]["speed"]
-        # # v1 = atoms[link["atoms"][1]]["speed"]
-        # target_point_0, target_point_1 = find_link_target_points(point0, point1, link["length"])
-        # error = get_distance(point0, point1) - link["length"]
-        # p0_res = pid_force(point0, target_point_0, error, link["stiffness"], link["integral_error"][0], link["previous_error"][0])
-        # p1_res = pid_force(point1, target_point_1, error, link["stiffness"], link["integral_error"][1], link["previous_error"][1])
-
-        # link["integral_error"][0] = p0_res["integral_error"]
-        # link["previous_error"][0] = p0_res["previous_error"]
-        # # force_p0 = p0_res["force"]
-
-        # link["integral_error"][1] = p1_res["integral_error"]
-        # link["previous_error"][1] = p1_res["previous_error"]
-        # # force_p1 = p1_res["force"]
-
-        # for i in range(NUM_DIMENSIONS):
-        #     atoms[link["atoms"][0]]["force"][i] += p0_res["force"][i]
-        #     atoms[link["atoms"][1]]["force"][i] += p1_res["force"][i]
-
-        # vel1 = atoms[link["atoms"][0]]['speed']
-        # vel2 = atoms[link["atoms"][1]]['speed']
-        # link_vector = vec.sub(point0, point1)
-        # # unit_link_vector = vec.normalize(link_vector)
-        # # relative_velocity = vec.sub(vel2, vel1)
-        # # relative_velocity_along_link = vec.dot(relative_velocity, unit_link_vector)
-        # damping_coefficient = -0.1  # Set it to 1.0 for this example
-        # # damping_ratio = min(1, abs(relative_velocity_along_link) / MAX_RELATIVE_SPEED)
-        # # damping_force_on_atom1 = [-damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
-        # # damping_force_on_atom2 = [damping_coefficient * damping_ratio * relative_velocity_along_link * unit_link_vector[i] for i in range(NUM_DIMENSIONS)]
-        # # vel1_proj = vec.vector_projection(link_vector, vel1)
-        # # vel2_proj = vec.vector_projection(link_vector, vel2)
-        # rel_vel1, rel_vel2 = get_relative_velocities(vel1, vel2)
-
-        # # for axis in range(NUM_DIMENSIONS):
-        # #     atoms[link["atoms"][0]]['speed'][axis] -= 0.9 * vel1_proj[axis]
-        # #     atoms[link["atoms"][1]]['speed'][axis] -= 0.9 * vel2_proj[axis]
-
-        # link_len = get_distance(point0, point1)
-        # force = (link_len - link["length"]) * link["stiffness"] * 0.2
-        # force_p1, force_p2 = calculate_force_vectors(point0, point1, force)
-        # total_force_on_atom1 = [force_p1[i] + rel_vel1[i] * damping_coefficient for i in range(NUM_DIMENSIONS)]
-        # total_force_on_atom2 = [force_p2[i] + rel_vel2[i] * damping_coefficient for i in range(NUM_DIMENSIONS)]
-        # for i in range(NUM_DIMENSIONS):
-        #     # atoms[link["atoms"][0]]["force"][i] += force_p1[i]
-        #     # atoms[link["atoms"][1]]["force"][i] += force_p2[i]
-        #     atoms[link["atoms"][0]]["force"][i] += total_force_on_atom1[i]
-        #     atoms[link["atoms"][1]]["force"][i] += total_force_on_atom2[i]
+            f1_damp = link["damping"] * rel_vel1[i]
+            f2_damp = link["damping"] * rel_vel2[i]
+            print(f"{rel_vel = }, {f1 = }, {f1_damp = }, {rel_vel1 = }, {f2 = }, {f2_damp = }, {rel_vel2 = }")
+            atoms[link["atoms"][0]]["force"][i] += f1 - f1_damp if f1 > f1_damp else 0
+            atoms[link["atoms"][1]]["force"][i] += f2 - f2_damp if f2 > f2_damp else 0
 
 
-# def apply_drag(v):
-#     if v < 0:
-#         return v + (DRAG_COEFFICIENT * v**2)
-#     return v - (DRAG_COEFFICIENT * v**2)
+def get_target_coords(atom0, atom1, link):
+    coords1 = atom0["coords"]
+    m1 = atom0["mass"]
+    coords2 = atom1["coords"]
+    m2 = atom1["mass"]
+    target_distance = link["length"]
+
+    if len(coords1) != len(coords2):
+        raise ValueError("Both points must have the same dimensionality")
+
+    # Vector from p1 to p2
+    diff = [c2 - c1 for c1, c2 in zip(coords1, coords2)]
+    cur_dist = math.sqrt(sum(d * d for d in diff))
+
+    # No movement needed if already at target or points coincide
+    if cur_dist == 0 or math.isclose(cur_dist, target_distance, rel_tol=1e-9):
+        return list(coords1), list(coords2)
+
+    # Desired change in distance
+    delta = target_distance - cur_dist
+
+    # Unit direction vector
+    unit = [d / cur_dist for d in diff]
+
+    # Inverse‑mass weighting (heavier → smaller move)
+    w1 = 1.0 / m1 if m1 != 0 else 0.0
+    w2 = 1.0 / m2 if m2 != 0 else 0.0
+    total_w = w1 + w2
+    if total_w == 0:    # both masses zero → split equally
+        w1 = w2 = 0.5
+        total_w = 1.0
+
+    # Portion of the distance change each point should take
+    move1 = (w1 / total_w) * delta
+    move2 = (w2 / total_w) * delta
+
+    # Apply the moves along the line connecting the points
+    new1 = [c1 - u * move1 for c1, u in zip(coords1, unit)]
+    new2 = [c2 + u * move2 for c2, u in zip(coords2, unit)]
+
+    return new1, new2
+
+
+def centroid(points):
+    """
+    Compute the geometric centre (centroid) of a collection of points
+    in *n*‑dimensional space.
+
+    Parameters
+    ----------
+    points : list of coordinate lists
+        Each inner list contains the coordinates of one point. All points
+        must have the same dimensionality and the list must contain at least
+        one point.
+
+    Returns
+    -------
+    list of float
+        Coordinates of the centroid.
+    """
+    if not points:
+        raise ValueError("The points list cannot be empty")
+
+    dim = len(points[0])
+    for p in points:
+        if len(p) != dim:
+            raise ValueError("All points must have the same number of dimensions")
+
+    # Sum each dimension
+    sums = [0.0] * dim
+    for p in points:
+        for i, coord in enumerate(p):
+            sums[i] += coord
+
+    n = len(points)
+    return [s / n for s in sums]
+
+
+def update_coords_custom(atoms, links, timestep=1):
+    for atom in atoms:
+        atom["new_coords"] = []
+        atom["prev_coords"] = [atom["coords"][i] for i in range(NUM_DIMENSIONS)]
+    for link in links:
+        a0 = atoms[link["atoms"][0]]
+        a1 = atoms[link["atoms"][1]]
+        new_coords0, new_coords1 = get_target_coords(a0, a1, link)
+        a0["new_coords"].append(lerp_coords(a0["coords"], new_coords0, link["stiffness"], timestep))
+        a1["new_coords"].append(lerp_coords(a1["coords"], new_coords1, link["stiffness"], timestep))
+
+
+def lerp_coords(current, target, percent, timestep=1):
+    """
+    Linear interpolation between two points in *n*‑dimensional space.
+
+    Parameters
+    ----------
+    current : list of float
+        Starting coordinates (point A).
+    target : list of float
+        Destination coordinates (point B).
+    percent : float
+        Fraction of the path to travel, expressed as a decimal
+        (e.g. 0.85 for 85%). Values outside [0,1] are allowed and will
+        extrapolate beyond the segment.
+    timestep: float
+        Use timestep to calculate the fractional movement
+
+    Returns
+    -------
+    list of float
+        New coordinates located `percent` of the way from `current` to `target`.
+    """
+    if percent < 0 or percent > 1:
+        raise Exception("Error: percentage should be in the [0, 1] range!")
+    
+    percent *= timestep
+
+    return [c + (t - c) * percent for c, t in zip(current, target)]
 
 
 def get_atom_accelerations(atom):
     acceleration = []
     for axis in range(NUM_DIMENSIONS):
         f = atom["force"][axis]
-        if axis == VERTICAL_AXIS:
-            f += G_CONST
+        # if axis == VERTICAL_AXIS:
+        #     f += G_CONST
         acceleration.append(f / atom["mass"])
         atom["force"][axis] = 0 # Clear force vector after calculating accelerations
+    print(f"{acceleration = }")
     return acceleration
 
 
@@ -458,13 +533,14 @@ def update_coords(atoms, links):
     time_passed = 0
     num_steps = 0
     while time_passed < 1:
-        calculate_forces(atoms, links, 1-time_passed)
-        accelerations = get_accelerations(atoms)
-        ts = get_timestep(atoms, accelerations)
-        if ts == 0:
-            raise Exception("Timestep == 0!")
-        if ts + time_passed > 1:
-            ts = 1 - time_passed    # Trim timestep to end at 1
+        ts = 1
+        # calculate_forces(atoms, links, 1-time_passed)
+        # accelerations = get_accelerations(atoms)
+        # ts = get_timestep(atoms, accelerations)
+        # if ts == 0:
+        #     raise Exception("Timestep == 0!")
+        # if ts + time_passed > 1:
+        #     ts = 1 - time_passed    # Trim timestep to end at 1
         calculate_forces(atoms, links, ts)
         accelerations = get_accelerations(atoms)
         new_positions = [get_new_position(atoms[i]["coords"], atoms[i]["speed"], accelerations[i], ts) for i in range(len(atoms))]
@@ -580,11 +656,12 @@ atoms = [
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": [450, 500],
+        "new_coords": [],
         "prev_coords": [450, 500],
         "path": [0 for _ in range(NUM_DIMENSIONS)],
         "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [-20, 0],
+        "speed": [0, 0],
         "prev_speed": [-20, 0],
         "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
@@ -595,32 +672,34 @@ atoms = [
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": [500, 550],
+        "new_coords": [],
         "prev_coords": [500, 550],
         "path": [0 for _ in range(NUM_DIMENSIONS)],
         "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [20, 0],
+        "speed": [0, 0],
         "prev_speed": [20, 0],
         "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
         "inv_mass": 1/POINT_MASS,
         "color": "#00FF00"
     },
-    {
-        "id": None,
-        "radius": ATOM_RADIUS,
-        "coords": [550, 500],
-        "prev_coords": [550, 500],
-        "path": [0 for _ in range(NUM_DIMENSIONS)],
-        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
-        "force": [0, 0],
-        "speed": [0, 8],
-        "prev_speed": [0, 8],
-        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
-        "mass": POINT_MASS,
-        "inv_mass": 1/POINT_MASS,
-        "color": "#FF0000"
-    },
+    # {
+    #     "id": None,
+    #     "radius": ATOM_RADIUS,
+    #     "coords": [550, 500],
+    #     "new_coords": [],
+    #     "prev_coords": [550, 500],
+    #     "path": [0 for _ in range(NUM_DIMENSIONS)],
+    #     "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
+    #     "force": [0, 0],
+    #     "speed": [0, 8],
+    #     "prev_speed": [0, 8],
+    #     "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
+    #     "mass": POINT_MASS,
+    #     "inv_mass": 1/POINT_MASS,
+    #     "color": "#FF0000"
+    # },
 ]
 
 links = [
@@ -633,24 +712,24 @@ links = [
         "integral_error": [None, None],
         "previous_error": [None, None]
     },
-    {
-        "atoms": [1, 2],
-        "length": 70,
-        "stiffness": STIFFNESS,
-        "damping": DAMPING_FACTOR,
-        "id": None,
-        "integral_error": [None, None],
-        "previous_error": [None, None]
-    },
-    {
-        "atoms": [2, 0],
-        "length": 70,
-        "stiffness": STIFFNESS,
-        "damping": DAMPING_FACTOR,
-        "id": None,
-        "integral_error": [None, None],
-        "previous_error": [None, None]
-    },
+    # {
+    #     "atoms": [1, 2],
+    #     "length": 70,
+    #     "stiffness": STIFFNESS,
+    #     "damping": DAMPING_FACTOR,
+    #     "id": None,
+    #     "integral_error": [None, None],
+    #     "previous_error": [None, None]
+    # },
+    # {
+    #     "atoms": [2, 0],
+    #     "length": 70,
+    #     "stiffness": STIFFNESS,
+    #     "damping": DAMPING_FACTOR,
+    #     "id": None,
+    #     "integral_error": [None, None],
+    #     "previous_error": [None, None]
+    # },
 ]
 
 def time_to_fall(height, init_velocity):
@@ -766,8 +845,8 @@ def update_world():
         link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
     print(f"\r{counter = }", end="")
     # time.sleep(1)
-    # if counter == 27:
-    #     sys.exit()
+    if counter == 5:
+        sys.exit()
 
 
     root.after(40, update_world)

@@ -23,6 +23,7 @@ POINT_MASS = 1  # 1 gramm
 MAX_RELATIVE_SPEED = 100
 DAMPING_FACTOR = 5
 STIFFNESS = 0.75
+USE_GRAVITY = False
 
 
 # Returns atom id
@@ -51,11 +52,7 @@ def different_signs(val1, val2):
     return True
 
 
-def get_target_coords(atom0, atom1, link):
-    coords1 = atom0["temp_coords"]
-    m1 = atom0["mass"]
-    coords2 = atom1["temp_coords"]
-    m2 = atom1["mass"]
+def get_target_coords(coords1, m1, coords2, m2, link):
     target_distance = link["length"]
 
     if len(coords1) != len(coords2):
@@ -129,39 +126,64 @@ def centroid(points):
     return [s / n for s in sums]
 
 
+def get_temp_coords(atoms, timestep):
+    # Find next positions based on the current velocity and gravity
+    temp_coords = []
+    for atom in atoms:
+        temp_v = vec.add(atom["coords"], vec.scale(atom["speed"], timestep))
+        if USE_GRAVITY:
+            temp_v[VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
+        temp_coords.append(temp_v)
+    return temp_coords
+
+
 def update_coords_custom(atoms, links, timestep=1):
+    num_atoms = len(atoms)
+    # Prepare arrays
     for atom in atoms:
         atom["new_coords"] = []
-        # atom["prev_coords"] = [atom["coords"][i] for i in range(NUM_DIMENSIONS)]
         atom["delta"] = [0 for i in range(NUM_DIMENSIONS)]
-        for axis in range(NUM_DIMENSIONS):
-            atom["temp_coords"][axis] = atom["coords"][axis] + atom["speed"][axis] * timestep
-            if axis == VERTICAL_AXIS:
-                atom["temp_coords"][axis] += (G_CONST * timestep**2) / 2
+
+    step1_coords = get_temp_coords(atoms, timestep)
+
     # Process links:
-    for link in links:
-        a0 = atoms[link["atoms"][0]]
-        a1 = atoms[link["atoms"][1]]
-        new_coords0, new_coords1 = get_target_coords(a0, a1, link)
-        a0["new_coords"].append(lerp_coords(a0["temp_coords"], new_coords0, link["stiffness"], timestep))
-        a1["new_coords"].append(lerp_coords(a1["temp_coords"], new_coords1, link["stiffness"], timestep))
-    for atom in atoms:
-        atom["new_coords"] = centroid(atom["new_coords"])
-        atom["delta"] = [atom["new_coords"][i] - atom["temp_coords"][i] for i in range(NUM_DIMENSIONS)]
+    step2_coords = [[] for _ in range(num_atoms)]
+    new_coords = [[] for _ in range(num_atoms)]
+    for _ in range(10):
+        for link in links:
+            a0_idx = link["atoms"][0]
+            a1_idx = link["atoms"][1]
+            m0 = atoms[a0_idx]["mass"]
+            m1 = atoms[a1_idx]["mass"]
+            new_coords0, new_coords1 = get_target_coords(step1_coords[a0_idx], m0, step1_coords[a1_idx], m1, link)
+            new_coords[a0_idx].append(new_coords0)
+            new_coords[a1_idx].append(new_coords1)
+        for idx in range(num_atoms):
+            if len(new_coords[idx]) > 0:
+                step2_coords[idx] = centroid(new_coords[idx])
+                new_coords[idx] = []
+
+    step3_coords = []
+    for idx in range(num_atoms):
+        atom = atoms[idx]
+        step3_coords.append(step2_coords[idx])
+        atom["delta"] = vec.sub(step2_coords[idx], step1_coords[idx])
+
     # Calculate new positions:
-    for atom in atoms:
-        for axis in range(NUM_DIMENSIONS):
-            atom["new_coords"][axis] = atom["temp_coords"][axis] + (atom["speed"][axis] + atom["delta"][axis]) * timestep
-            atom["new_speed"][axis] = atom["speed"][axis] + atom["delta"][axis] * 0.9
-            if axis == VERTICAL_AXIS:
-                atom["new_coords"][axis] += (G_CONST * timestep**2) / 2
-                atom["new_speed"][axis] += G_CONST * timestep
+    for idx in range(num_atoms):
+        atom = atoms[idx]
+        atom["new_speed"] = vec.sum(atom["speed"], vec.scale(atom["delta"], 0.9))
+        if USE_GRAVITY:
+            step3_coords[VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
+            atom["new_speed"][VERTICAL_AXIS] += G_CONST * timestep
+
     # Process collisions:
     # TODO: ImplementMe!
     # Update coords:
-    for atom in atoms:
+    for idx in range(num_atoms):
+        atom = atoms[idx]
         for axis in range(NUM_DIMENSIONS):
-            atom["coords"][axis] = atom["new_coords"][axis]
+            atom["coords"][axis] = step3_coords[idx][axis]
             atom["speed"][axis] = atom["new_speed"][axis]
 
 
@@ -298,8 +320,6 @@ def update_world():
 
     if not first_run:
         update_coords_custom(atoms, links)
-        # update_coords(atoms, links)
-        # update_coords_new(atoms, links)
         counter += 1
     else:
         first_run = False

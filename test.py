@@ -120,11 +120,11 @@ def centroid(points):
     return [s / n for s in sums]
 
 
-def get_temp_coords(atoms, timestep):
+def get_temp_coords(init_coords, init_velocities, num_atoms, timestep):
     # Find next positions based on the current velocity and gravity
     temp_coords = []
-    for atom in atoms:
-        temp_v = vec.add(atom["coords"], vec.scale(atom["speed"], timestep))
+    for idx in range(num_atoms):
+        temp_v = vec.add(init_coords[idx], vec.scale(init_velocities[idx], timestep))
         if USE_GRAVITY:
             temp_v[VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
         temp_coords.append(temp_v)
@@ -166,6 +166,7 @@ def update_velocities(init_velocities, deltas, num_atoms, timestep):
 
 
 def get_time_substep(atoms):
+    # Calculates the time required for the fastest atom to cross it's radius
     v_max = 0
     r = 0
     for a in atoms:
@@ -178,10 +179,13 @@ def get_time_substep(atoms):
     return r / v_max
     
 
+def get_first_collision():
+    pass
 
 def update_coords(atoms, links, timestep=1):
     num_atoms = len(atoms)
     init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
+    init_coords = [atoms[i]["coords"] for i in range(num_atoms)]
     masses = [atoms[i]["mass"] for i in range(num_atoms)]
     passed_time = 0
     while passed_time < timestep:
@@ -190,7 +194,7 @@ def update_coords(atoms, links, timestep=1):
         if (passed_time + ts) > timestep:
             ts = timestep - passed_time
             last_iter = True
-        step1_coords = get_temp_coords(atoms, ts)   # Add init_coords and use it instead of atoms
+        step1_coords = get_temp_coords(init_coords, init_velocities, num_atoms, ts)
         step2_coords, deltas = process_links(step1_coords, masses, links, ts)
         new_velocities = update_velocities(init_velocities, deltas, num_atoms, ts)
 

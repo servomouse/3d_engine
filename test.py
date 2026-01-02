@@ -46,12 +46,6 @@ def draw_line(canvas, coords1, coords2):
     )
 
 
-def different_signs(val1, val2):
-    if (val1 >= 0 and val2 >= 0) or (val1 < 0 and val2 < 0):
-        return False
-    return True
-
-
 def get_target_coords(coords1, m1, coords2, m2, link):
     target_distance = link["length"]
 
@@ -189,36 +183,6 @@ def update_coords_custom(atoms, links, timestep=1):
         atoms[idx]["speed"] = new_velocities[idx]
 
 
-def lerp_coords(current, target, percent, timestep=1):
-    """
-    Linear interpolation between two points in *n*‑dimensional space.
-
-    Parameters
-    ----------
-    current : list of float
-        Starting coordinates (point A).
-    target : list of float
-        Destination coordinates (point B).
-    percent : float
-        Fraction of the path to travel, expressed as a decimal
-        (e.g. 0.85 for 85%). Values outside [0,1] are allowed and will
-        extrapolate beyond the segment.
-    timestep: float
-        Use timestep to calculate the fractional movement
-
-    Returns
-    -------
-    list of float
-        New coordinates located `percent` of the way from `current` to `target`.
-    """
-    if percent < 0 or percent > 1:
-        raise Exception("Error: percentage should be in the [0, 1] range!")
-    
-    percent *= timestep
-
-    return [c + (t - c) * percent for c, t in zip(current, target)]
-
-
 atoms = [
     {
         "id": None,
@@ -339,8 +303,6 @@ def update_world():
     time.sleep(0.1)
     # if counter == 5:
     #     sys.exit()
-
-
     root.after(40, update_world)
 
 update_world()

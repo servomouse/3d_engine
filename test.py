@@ -23,7 +23,7 @@ POINT_MASS = 1  # 1 gramm
 MAX_RELATIVE_SPEED = 100
 DAMPING_FACTOR = 5
 STIFFNESS = 0.75
-USE_GRAVITY = False
+USE_GRAVITY = True
 
 
 # Returns atom id
@@ -139,52 +139,47 @@ def get_temp_coords(atoms, timestep):
 
 def update_coords_custom(atoms, links, timestep=1):
     num_atoms = len(atoms)
-    # Prepare arrays
-    for atom in atoms:
-        atom["new_coords"] = []
-        atom["delta"] = [0 for i in range(NUM_DIMENSIONS)]
+    init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
+    masses = [atoms[i]["mass"] for i in range(num_atoms)]
 
     step1_coords = get_temp_coords(atoms, timestep)
 
     # Process links:
-    step2_coords = [[] for _ in range(num_atoms)]
-    new_coords = [[] for _ in range(num_atoms)]
+    step2_coords = copy.deepcopy(step1_coords)
     for _ in range(10):
+        temp_coords = [[] for _ in range(num_atoms)]
         for link in links:
             a0_idx = link["atoms"][0]
             a1_idx = link["atoms"][1]
-            m0 = atoms[a0_idx]["mass"]
-            m1 = atoms[a1_idx]["mass"]
-            new_coords0, new_coords1 = get_target_coords(step1_coords[a0_idx], m0, step1_coords[a1_idx], m1, link)
-            new_coords[a0_idx].append(new_coords0)
-            new_coords[a1_idx].append(new_coords1)
+            m0 = masses[a0_idx]
+            m1 = masses[a1_idx]
+            new_coords0, new_coords1 = get_target_coords(step2_coords[a0_idx], m0, step2_coords[a1_idx], m1, link)
+            temp_coords[a0_idx].append(new_coords0)
+            temp_coords[a1_idx].append(new_coords1)
         for idx in range(num_atoms):
-            if len(new_coords[idx]) > 0:
-                step2_coords[idx] = centroid(new_coords[idx])
-                new_coords[idx] = []
+            if len(temp_coords[idx]) > 0:   # Skip if atom doesn't have any link
+                step2_coords[idx] = centroid(temp_coords[idx])
 
     step3_coords = []
+    deltas = []
     for idx in range(num_atoms):
-        atom = atoms[idx]
         step3_coords.append(step2_coords[idx])
-        atom["delta"] = vec.sub(step2_coords[idx], step1_coords[idx])
+        deltas.append(vec.sub(step2_coords[idx], step1_coords[idx]))
 
+    new_velocities = []
     # Calculate new positions:
     for idx in range(num_atoms):
-        atom = atoms[idx]
-        atom["new_speed"] = vec.sum(atom["speed"], vec.scale(atom["delta"], 0.9))
+        new_velocities.append(vec.sum(init_velocities[idx], vec.scale(deltas[idx], 0.9)))
         if USE_GRAVITY:
-            step3_coords[VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
-            atom["new_speed"][VERTICAL_AXIS] += G_CONST * timestep
+            step3_coords[idx][VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
+            new_velocities[-1][VERTICAL_AXIS] += G_CONST * timestep
 
     # Process collisions:
     # TODO: ImplementMe!
     # Update coords:
     for idx in range(num_atoms):
-        atom = atoms[idx]
-        for axis in range(NUM_DIMENSIONS):
-            atom["coords"][axis] = step3_coords[idx][axis]
-            atom["speed"][axis] = atom["new_speed"][axis]
+        atoms[idx]["coords"] = step3_coords[idx]
+        atoms[idx]["speed"] = new_velocities[idx]
 
 
 def lerp_coords(current, target, percent, timestep=1):
@@ -228,7 +223,7 @@ atoms = [
         "path": [0 for _ in range(NUM_DIMENSIONS)],
         "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [5, 0],
         "new_speed": [0, 0],
         "prev_speed": [-20, 0],
         "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
@@ -246,7 +241,7 @@ atoms = [
         "path": [0 for _ in range(NUM_DIMENSIONS)],
         "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [5, 0],
         "new_speed": [0, 0],
         "prev_speed": [20, 0],
         "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
@@ -264,7 +259,7 @@ atoms = [
         "path": [0 for _ in range(NUM_DIMENSIONS)],
         "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [5, 0],
         "new_speed": [0, 0],
         "prev_speed": [0, 8],
         "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],

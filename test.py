@@ -165,15 +165,16 @@ def update_velocities(init_velocities, deltas, num_atoms, timestep):
     return new_velocities
 
 
-def get_time_substep(atoms):
+def get_time_substep(velocities, radii, num_atoms):
     # Calculates the time required for the fastest atom to cross it's radius
     v_max = 0
     r = 0
-    for a in atoms:
-        v = vec.magnitude(a["speed"]) / a["radius"]
+    for i in range(num_atoms):
+        v = vec.magnitude(velocities[i]) / radii[i]
         if v > v_max:
             v_max = v
-            r = a["radius"]
+            r = radii[i]
+
     if v_max == 0:
         return 1
     return r / v_max
@@ -187,9 +188,10 @@ def update_coords(atoms, links, timestep=1):
     init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
     init_coords = [atoms[i]["coords"] for i in range(num_atoms)]
     masses = [atoms[i]["mass"] for i in range(num_atoms)]
+    radii = [atoms[i]["radius"] for i in range(num_atoms)]
     passed_time = 0
     while passed_time < timestep:
-        ts = get_time_substep(atoms)
+        ts = get_time_substep(init_velocities, radii, num_atoms)
         last_iter = False
         if (passed_time + ts) > timestep:
             ts = timestep - passed_time

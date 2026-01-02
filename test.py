@@ -131,7 +131,7 @@ def get_temp_coords(atoms, timestep):
     return temp_coords
 
 
-def process_links(step1_coords, masses, links):
+def process_links(step1_coords, masses, links, timestep):
     num_atoms = len(masses)
     fin_coords = copy.deepcopy(step1_coords)
     for _ in range(10):
@@ -150,37 +150,61 @@ def process_links(step1_coords, masses, links):
 
     deltas = []
     for idx in range(num_atoms):
-        deltas.append(vec.sub(fin_coords[idx], step1_coords[idx]))
+        d = vec.scale(vec.sub(fin_coords[idx], step1_coords[idx]), timestep)
+        deltas.append(d)
+        fin_coords[idx] = vec.add(step1_coords[idx], d)
     return fin_coords, deltas
 
 
 def update_velocities(init_velocities, deltas, num_atoms, timestep):
     new_velocities = []
     for idx in range(num_atoms):
-        new_velocities.append(vec.sum(init_velocities[idx], vec.scale(deltas[idx], 0.9)))
+        new_velocities.append(vec.add(init_velocities[idx], vec.scale(deltas[idx], 0.9)))
         if USE_GRAVITY:
             new_velocities[-1][VERTICAL_AXIS] += G_CONST * timestep
     return new_velocities
+
+
+def get_time_substep(atoms):
+    v_max = 0
+    r = 0
+    for a in atoms:
+        v = vec.magnitude(a["speed"]) / a["radius"]
+        if v > v_max:
+            v_max = v
+            r = a["radius"]
+    if v_max == 0:
+        return 1
+    return r / v_max
+    
 
 
 def update_coords(atoms, links, timestep=1):
     num_atoms = len(atoms)
     init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
     masses = [atoms[i]["mass"] for i in range(num_atoms)]
+    passed_time = 0
+    while passed_time < timestep:
+        ts = get_time_substep(atoms)
+        last_iter = False
+        if (passed_time + ts) > timestep:
+            ts = timestep - passed_time
+            last_iter = True
+        step1_coords = get_temp_coords(atoms, ts)   # Add init_coords and use it instead of atoms
+        step2_coords, deltas = process_links(step1_coords, masses, links, ts)
+        new_velocities = update_velocities(init_velocities, deltas, num_atoms, ts)
 
-    step1_coords = get_temp_coords(atoms, timestep)
+        # Process collisions:
+        # TODO: ImplementMe!
 
-    step2_coords, deltas = process_links(step1_coords, masses, links)
+        # Update coords:
+        for idx in range(num_atoms):
+            atoms[idx]["coords"] = step2_coords[idx]
+            atoms[idx]["speed"] = new_velocities[idx]
 
-    new_velocities = update_velocities(init_velocities, deltas, num_atoms, timestep)
-
-    # Process collisions:
-    # TODO: ImplementMe!
-
-    # Update coords:
-    for idx in range(num_atoms):
-        atoms[idx]["coords"] = step2_coords[idx]
-        atoms[idx]["speed"] = new_velocities[idx]
+        passed_time += ts
+        if last_iter:   # Avoid float errors
+            break
 
 
 atoms = [
@@ -264,7 +288,7 @@ def update_world():
             canvas.delete(link["id"])
         link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
     print(f"\r{counter = }", end="")
-    time.sleep(0.1)
+    # time.sleep(0.1)
     # if counter == 5:
     #     sys.exit()
     root.after(40, update_world)

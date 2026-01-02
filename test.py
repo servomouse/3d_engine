@@ -160,6 +160,15 @@ def process_links(step1_coords, masses, links):
     return fin_coords, deltas
 
 
+def update_velocities(init_velocities, deltas, num_atoms, timestep):
+    new_velocities = []
+    for idx in range(num_atoms):
+        new_velocities.append(vec.sum(init_velocities[idx], vec.scale(deltas[idx], 0.9)))
+        if USE_GRAVITY:
+            new_velocities[-1][VERTICAL_AXIS] += G_CONST * timestep
+    return new_velocities
+
+
 def update_coords_custom(atoms, links, timestep=1):
     num_atoms = len(atoms)
     init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
@@ -169,15 +178,11 @@ def update_coords_custom(atoms, links, timestep=1):
 
     step2_coords, deltas = process_links(step1_coords, masses, links)
 
-    new_velocities = []
-    # Calculate new positions:
-    for idx in range(num_atoms):
-        new_velocities.append(vec.sum(init_velocities[idx], vec.scale(deltas[idx], 0.9)))
-        if USE_GRAVITY:
-            new_velocities[-1][VERTICAL_AXIS] += G_CONST * timestep
+    new_velocities = update_velocities(init_velocities, deltas, num_atoms, timestep)
 
     # Process collisions:
     # TODO: ImplementMe!
+
     # Update coords:
     for idx in range(num_atoms):
         atoms[idx]["coords"] = step2_coords[idx]

@@ -137,15 +137,9 @@ def get_temp_coords(atoms, timestep):
     return temp_coords
 
 
-def update_coords_custom(atoms, links, timestep=1):
-    num_atoms = len(atoms)
-    init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
-    masses = [atoms[i]["mass"] for i in range(num_atoms)]
-
-    step1_coords = get_temp_coords(atoms, timestep)
-
-    # Process links:
-    step2_coords = copy.deepcopy(step1_coords)
+def process_links(step1_coords, masses, links):
+    num_atoms = len(masses)
+    fin_coords = copy.deepcopy(step1_coords)
     for _ in range(10):
         temp_coords = [[] for _ in range(num_atoms)]
         for link in links:
@@ -153,32 +147,40 @@ def update_coords_custom(atoms, links, timestep=1):
             a1_idx = link["atoms"][1]
             m0 = masses[a0_idx]
             m1 = masses[a1_idx]
-            new_coords0, new_coords1 = get_target_coords(step2_coords[a0_idx], m0, step2_coords[a1_idx], m1, link)
+            new_coords0, new_coords1 = get_target_coords(fin_coords[a0_idx], m0, fin_coords[a1_idx], m1, link)
             temp_coords[a0_idx].append(new_coords0)
             temp_coords[a1_idx].append(new_coords1)
         for idx in range(num_atoms):
             if len(temp_coords[idx]) > 0:   # Skip if atom doesn't have any link
-                step2_coords[idx] = centroid(temp_coords[idx])
+                fin_coords[idx] = centroid(temp_coords[idx])
 
-    step3_coords = []
     deltas = []
     for idx in range(num_atoms):
-        step3_coords.append(step2_coords[idx])
-        deltas.append(vec.sub(step2_coords[idx], step1_coords[idx]))
+        deltas.append(vec.sub(fin_coords[idx], step1_coords[idx]))
+    return fin_coords, deltas
+
+
+def update_coords_custom(atoms, links, timestep=1):
+    num_atoms = len(atoms)
+    init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
+    masses = [atoms[i]["mass"] for i in range(num_atoms)]
+
+    step1_coords = get_temp_coords(atoms, timestep)
+
+    step2_coords, deltas = process_links(step1_coords, masses, links)
 
     new_velocities = []
     # Calculate new positions:
     for idx in range(num_atoms):
         new_velocities.append(vec.sum(init_velocities[idx], vec.scale(deltas[idx], 0.9)))
         if USE_GRAVITY:
-            step3_coords[idx][VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
             new_velocities[-1][VERTICAL_AXIS] += G_CONST * timestep
 
     # Process collisions:
     # TODO: ImplementMe!
     # Update coords:
     for idx in range(num_atoms):
-        atoms[idx]["coords"] = step3_coords[idx]
+        atoms[idx]["coords"] = step2_coords[idx]
         atoms[idx]["speed"] = new_velocities[idx]
 
 
@@ -241,7 +243,7 @@ atoms = [
         "path": [0 for _ in range(NUM_DIMENSIONS)],
         "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [5, 0],
+        "speed": [8, 0],
         "new_speed": [0, 0],
         "prev_speed": [20, 0],
         "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],

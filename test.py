@@ -163,7 +163,7 @@ def update_velocities(init_velocities, deltas, num_atoms, timestep):
     return new_velocities
 
 
-def update_coords_custom(atoms, links, timestep=1):
+def update_coords(atoms, links, timestep=1):
     num_atoms = len(atoms)
     init_velocities = [atoms[i]["speed"] for i in range(num_atoms)]
     masses = [atoms[i]["mass"] for i in range(num_atoms)]
@@ -188,54 +188,27 @@ atoms = [
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": [450, 500],
-        "new_coords": [],
-        "temp_coords": [0 for _ in range(NUM_DIMENSIONS)],
-        "prev_coords": [450, 500],
-        "path": [0 for _ in range(NUM_DIMENSIONS)],
-        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [5, 0],
-        "new_speed": [0, 0],
-        "prev_speed": [-20, 0],
-        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
-        "inv_mass": 1/POINT_MASS,
         "color": "#0000FF",
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": [500, 550],
-        "new_coords": [],
-        "temp_coords": [0 for _ in range(NUM_DIMENSIONS)],
-        "prev_coords": [500, 550],
-        "path": [0 for _ in range(NUM_DIMENSIONS)],
-        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [8, 0],
-        "new_speed": [0, 0],
-        "prev_speed": [20, 0],
-        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
-        "inv_mass": 1/POINT_MASS,
         "color": "#00FF00"
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": [550, 500],
-        "new_coords": [],
-        "temp_coords": [0 for _ in range(NUM_DIMENSIONS)],
-        "prev_coords": [550, 500],
-        "path": [0 for _ in range(NUM_DIMENSIONS)],
-        "acceleration": [G_CONST if i == VERTICAL_AXIS else 0 for i in range(NUM_DIMENSIONS)],
         "force": [0, 0],
         "speed": [5, 0],
-        "new_speed": [0, 0],
-        "prev_speed": [0, 8],
-        "invert_speed": [0 for _ in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
-        "inv_mass": 1/POINT_MASS,
         "color": "#FF0000"
     },
 ]
@@ -245,28 +218,19 @@ links = [
         "atoms": [0, 1],
         "length": 70,
         "stiffness": STIFFNESS,
-        "damping": DAMPING_FACTOR,
-        "id": None,
-        "integral_error": [None, None],
-        "previous_error": [None, None]
+        "id": None
     },
     {
         "atoms": [1, 2],
         "length": 70,
         "stiffness": STIFFNESS,
-        "damping": DAMPING_FACTOR,
-        "id": None,
-        "integral_error": [None, None],
-        "previous_error": [None, None]
+        "id": None
     },
     {
         "atoms": [2, 0],
         "length": 70,
         "stiffness": STIFFNESS,
-        "damping": DAMPING_FACTOR,
-        "id": None,
-        "integral_error": [None, None],
-        "previous_error": [None, None]
+        "id": None
     },
 ]
 
@@ -285,7 +249,7 @@ def update_world():
     global first_run, counter
 
     if not first_run:
-        update_coords_custom(atoms, links)
+        update_coords(atoms, links)
         counter += 1
     else:
         first_run = False

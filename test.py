@@ -10,9 +10,11 @@ from pid import pid_force
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
+WORLD_DEPTH = 600
 WORLD_LIMITS = [
     [0, WINDOW_WIDTH],
-    [0, WINDOW_HEIGHT]
+    [0, WINDOW_HEIGHT],
+    [0, WORLD_DEPTH]
 ]
 NUM_DIMENSIONS = len(WORLD_LIMITS)
 DRAG_COEFFICIENT = 0.1
@@ -23,7 +25,7 @@ POINT_MASS = 1  # 1 gramm
 MAX_RELATIVE_SPEED = 100
 DAMPING_FACTOR = 5
 STIFFNESS = 0.75
-USE_GRAVITY = True
+USE_GRAVITY = False
 
 
 # Returns atom id
@@ -348,90 +350,100 @@ atoms = [
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [450, 500],
+        "coords": [450, 500, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [0, 3],
+        "speed": [0, 3, random.random()],
         "mass": POINT_MASS,
         "color": "#0000FF",
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [500, 550],
+        "coords": [500, 550, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [0, 0],
+        "speed": [0, 0, random.random()],
         "mass": POINT_MASS,
         "color": "#00FF00"
     },
     {
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [550, 500],
+        "coords": [550, 500, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [0, -3],
+        "speed": [0, -3, random.random()],
         "mass": POINT_MASS,
         "color": "#FF0000"
     },
     {
         "id": None, # 3
         "radius": ATOM_RADIUS,
-        "coords": [475, 340],
+        "coords": [475, 340, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 0, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
     {
         "id": None, # 4
         "radius": ATOM_RADIUS,
-        "coords": [525, 340],
+        "coords": [525, 340, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 0, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
     {
         "id": None, # 5
         "radius": ATOM_RADIUS,
-        "coords": [500, 300],
+        "coords": [500, 300, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 0, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
     {
         "id": None, # 6
         "radius": ATOM_RADIUS,
-        "coords": [525, 260],
+        "coords": [525, 260, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 0, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
     {
         "id": None, # 7
         "radius": ATOM_RADIUS,
-        "coords": [475, 260],
+        "coords": [475, 260, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 0, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
     {
         "id": None, # 8
         "radius": ATOM_RADIUS,
-        "coords": [550, 300],
+        "coords": [550, 300, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 0, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
     {
         "id": None, # 9
         "radius": ATOM_RADIUS,
-        "coords": [450, 300],
+        "coords": [450, 300, 100],
+        "2d_coords": [],
         "force": [0, 0],
-        "speed": [-2, 0],
+        "speed": [-2, 50, random.random()],
         "mass": POINT_MASS,
         "color": random_color()
     },
@@ -528,24 +540,24 @@ links = [
         "stiffness": STIFFNESS,
         "id": None
     },
-    # {
-    #     "atoms": [4, 7],
-    #     "length": 100,
-    #     "stiffness": STIFFNESS,
-    #     "id": None
-    # },
-    # {
-    #     "atoms": [6, 3],
-    #     "length": 100,
-    #     "stiffness": STIFFNESS,
-    #     "id": None
-    # },
-    # {
-    #     "atoms": [9, 8],
-    #     "length": 100,
-    #     "stiffness": STIFFNESS,
-    #     "id": None
-    # },
+    {
+        "atoms": [10, 11],
+        "length": 100,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [11, 12],
+        "length": 100,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [12, 13],
+        "length": 100,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
 ]
 
 
@@ -554,12 +566,9 @@ for i in range(20):
     atoms.append({
         "id": None,
         "radius": ATOM_RADIUS,
-        "coords": [
-            random.randint(WORLD_LIMITS[0][0]+50, WORLD_LIMITS[0][1]-50),
-            random.randint(WORLD_LIMITS[1][0]+50, WORLD_LIMITS[1][1]-50)
-        ],
+        "coords": [random.randint(WORLD_LIMITS[a][0]+50, WORLD_LIMITS[a][1]-50) for a in range(NUM_DIMENSIONS)],
         "force": [0, 0],
-        "speed": [random.randint(-10, 10), random.randint(-10, 10)],
+        "speed": [random.randint(-100, 100) for a in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
         "color": random_color()
     })
@@ -575,6 +584,30 @@ canvas.pack()
 first_run = True
 counter = 0
 
+scale_coeff = -0.5/WORLD_DEPTH
+
+def get_coords(coords):
+    if len(coords) == 2:
+        return coords   # Skip for 2D
+    coeffs = [
+        (WORLD_LIMITS[0][1] / 2),
+        (WORLD_LIMITS[1][1] / 2)
+    ]
+    x = coords[0] / coeffs[0] - 1
+    y = coords[1] / coeffs[1] - 1
+    z = coords[2]
+    x = x * (z*scale_coeff + 1) + 1
+    y = y * (z*scale_coeff + 1) + 1
+    return [
+        x * coeffs[0],
+        y * coeffs[1]
+    ]
+
+
+def scale_radius(r, z):
+    return r * (z*scale_coeff + 1)
+
+
 def update_world():
     global first_run, counter
 
@@ -587,19 +620,42 @@ def update_world():
     for atom in atoms:
         if atom["id"] is not None:
             canvas.delete(atom["id"])
-        atom["id"] = draw_atom(canvas, atom["coords"], atom["radius"], atom["color"])
+        atom["2d_coords"] = get_coords(atom["coords"])
+        if NUM_DIMENSIONS > 2:
+            atom["id"] = draw_atom(canvas, atom["2d_coords"], scale_radius(atom["radius"], atom["coords"][2]), atom["color"])
+        else:
+            atom["id"] = draw_atom(canvas, atom["2d_coords"], scale_radius(atom["radius"], 1), atom["color"])
     
     for link in links:
         if link["id"] is not None:
             canvas.delete(link["id"])
-        link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
+        a0 = link["atoms"][0]
+        a1 = link["atoms"][1]
+        link["id"] = draw_line(canvas, atoms[a0]["2d_coords"], atoms[a1]["2d_coords"])
     print(f"\r{counter = }", end="")
     time.sleep(1/60)
     if counter == 200:
         links[0]["length"] = 35
+    if counter == 300:
+        links[0]["length"] = 70
     # if counter == 5:
     #     sys.exit()
     root.after(40, update_world)
+
+if NUM_DIMENSIONS > 2:
+    x0y0z1 = get_coords([WORLD_LIMITS[0][0], WORLD_LIMITS[1][0], WORLD_LIMITS[2][1]])
+    x0y1z1 = get_coords([WORLD_LIMITS[0][0], WORLD_LIMITS[1][1], WORLD_LIMITS[2][1]])
+    x1y0z1 = get_coords([WORLD_LIMITS[0][1], WORLD_LIMITS[1][0], WORLD_LIMITS[2][1]])
+    x1y1z1 = get_coords([WORLD_LIMITS[0][1], WORLD_LIMITS[1][1], WORLD_LIMITS[2][1]])
+    draw_line(canvas, x0y0z1, x0y1z1)
+    draw_line(canvas, x0y0z1, x1y0z1)
+    draw_line(canvas, x1y1z1, x1y0z1)
+    draw_line(canvas, x1y1z1, x0y1z1)
+
+    draw_line(canvas, [WORLD_LIMITS[0][0], WORLD_LIMITS[1][0]], x0y0z1)
+    draw_line(canvas, [WORLD_LIMITS[0][0], WORLD_LIMITS[1][1]], x0y1z1)
+    draw_line(canvas, [WORLD_LIMITS[0][1], WORLD_LIMITS[1][0]], x1y0z1)
+    draw_line(canvas, [WORLD_LIMITS[0][1], WORLD_LIMITS[1][1]], x1y1z1)
 
 update_world()
 root.mainloop()

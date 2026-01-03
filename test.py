@@ -1,12 +1,9 @@
 import tkinter as tk
 import random
-import json
-import sys
 import time
 import math
 import copy
 import vector_math as vec
-from pid import pid_force
 from objects import add_wheel
 
 WINDOW_WIDTH = 1000
@@ -353,7 +350,6 @@ atoms = [
         "radius": ATOM_RADIUS,
         "coords": [450, 500, 100],
         "2d_coords": [],
-        "force": [0, 0],
         "speed": [0, 3, random.random()],
         "mass": POINT_MASS,
         "color": "#0000FF",
@@ -363,7 +359,6 @@ atoms = [
         "radius": ATOM_RADIUS,
         "coords": [500, 550, 100],
         "2d_coords": [],
-        "force": [0, 0],
         "speed": [0, 0, random.random()],
         "mass": POINT_MASS,
         "color": "#00FF00"
@@ -373,7 +368,6 @@ atoms = [
         "radius": ATOM_RADIUS,
         "coords": [550, 500, 100],
         "2d_coords": [],
-        "force": [0, 0],
         "speed": [0, -3, random.random()],
         "mass": POINT_MASS,
         "color": "#FF0000"
@@ -429,7 +423,6 @@ for i in range(20):
         "id": None,
         "radius": ATOM_RADIUS,
         "coords": [random.randint(WORLD_LIMITS[a][0]+50, WORLD_LIMITS[a][1]-50) for a in range(NUM_DIMENSIONS)],
-        "force": [0, 0],
         "speed": [random.randint(-100, 100) for a in range(NUM_DIMENSIONS)],
         "mass": POINT_MASS,
         "color": random_color()
@@ -483,10 +476,7 @@ def update_world():
         if atom["id"] is not None:
             canvas.delete(atom["id"])
         atom["2d_coords"] = get_coords(atom["coords"])
-        if NUM_DIMENSIONS > 2:
-            atom["id"] = draw_atom(canvas, atom["2d_coords"], scale_radius(atom["radius"], atom["coords"][2]), atom["color"])
-        else:
-            atom["id"] = draw_atom(canvas, atom["2d_coords"], scale_radius(atom["radius"], 1), atom["color"])
+        atom["id"] = draw_atom(canvas, atom["2d_coords"], scale_radius(atom["radius"], atom["coords"][2]), atom["color"])
     
     for link in links:
         if link["id"] is not None:
@@ -504,20 +494,19 @@ def update_world():
     #     sys.exit()
     root.after(40, update_world)
 
-if NUM_DIMENSIONS > 2:
-    x0y0z1 = get_coords([WORLD_LIMITS[0][0], WORLD_LIMITS[1][0], WORLD_LIMITS[2][1]])
-    x0y1z1 = get_coords([WORLD_LIMITS[0][0], WORLD_LIMITS[1][1], WORLD_LIMITS[2][1]])
-    x1y0z1 = get_coords([WORLD_LIMITS[0][1], WORLD_LIMITS[1][0], WORLD_LIMITS[2][1]])
-    x1y1z1 = get_coords([WORLD_LIMITS[0][1], WORLD_LIMITS[1][1], WORLD_LIMITS[2][1]])
-    draw_line(canvas, x0y0z1, x0y1z1)
-    draw_line(canvas, x0y0z1, x1y0z1)
-    draw_line(canvas, x1y1z1, x1y0z1)
-    draw_line(canvas, x1y1z1, x0y1z1)
+x0y0z1 = get_coords([WORLD_LIMITS[0][0], WORLD_LIMITS[1][0], WORLD_LIMITS[2][1]])
+x0y1z1 = get_coords([WORLD_LIMITS[0][0], WORLD_LIMITS[1][1], WORLD_LIMITS[2][1]])
+x1y0z1 = get_coords([WORLD_LIMITS[0][1], WORLD_LIMITS[1][0], WORLD_LIMITS[2][1]])
+x1y1z1 = get_coords([WORLD_LIMITS[0][1], WORLD_LIMITS[1][1], WORLD_LIMITS[2][1]])
+draw_line(canvas, x0y0z1, x0y1z1)
+draw_line(canvas, x0y0z1, x1y0z1)
+draw_line(canvas, x1y1z1, x1y0z1)
+draw_line(canvas, x1y1z1, x0y1z1)
 
-    draw_line(canvas, [WORLD_LIMITS[0][0], WORLD_LIMITS[1][0]], x0y0z1)
-    draw_line(canvas, [WORLD_LIMITS[0][0], WORLD_LIMITS[1][1]], x0y1z1)
-    draw_line(canvas, [WORLD_LIMITS[0][1], WORLD_LIMITS[1][0]], x1y0z1)
-    draw_line(canvas, [WORLD_LIMITS[0][1], WORLD_LIMITS[1][1]], x1y1z1)
+draw_line(canvas, [WORLD_LIMITS[0][0], WORLD_LIMITS[1][0]], x0y0z1)
+draw_line(canvas, [WORLD_LIMITS[0][0], WORLD_LIMITS[1][1]], x0y1z1)
+draw_line(canvas, [WORLD_LIMITS[0][1], WORLD_LIMITS[1][0]], x1y0z1)
+draw_line(canvas, [WORLD_LIMITS[0][1], WORLD_LIMITS[1][1]], x1y1z1)
 
 update_world()
 root.mainloop()

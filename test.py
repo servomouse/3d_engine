@@ -305,6 +305,10 @@ def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velo
     return None
 
 
+def collision_time(r0, c0, v0, r1, c1, v1):
+    pass
+
+
 def get_atom_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep):
     """ Return value: 
     {
@@ -313,6 +317,13 @@ def get_atom_collision(radii, init_coords, new_coords, init_velocities, new_velo
         "atoms": [-1, -1]
     } or None
     """
+    num_atoms = len(init_coords)
+    for idx0 in range(num_atoms):
+        for idx1 in range(num_atoms):
+            r_sum = radii[idx0]+radii[idx1]
+            d = vec.distance(new_coords[idx0], new_coords[idx1])
+            if d <= r_sum:
+                pass
     return None
 
 
@@ -328,8 +339,60 @@ def get_first_collision(radii, init_coords, new_coords, init_velocities, new_vel
     return None
 
 
-def process_collision(c, coords, step2_coords, velocities, new_velocities, ts):
-    pass
+def resolve_collision(m1, r1, p1, v1, m2, r2, p2, v2, elasticity=1.0):
+    """
+    Calculates post-collision velocities and positions for two spheres.
+    
+    Parameters:
+    m1, m2 : float - Masses
+    r1, r2 : float - Radii
+    p1, p2 : array - Position vectors
+    v1, v2 : array - Velocity vectors
+    elasticity : float - Coefficient of restitution (1.0 = perfectly elastic)
+    """
+    # 1. Coordinate and Distance Math
+    delta_p = vec.sub(p2, p1)
+    distance = vec.magnitude(delta_p)
+    
+    # Avoid division by zero if centers are exactly at the same point
+    if distance == 0:
+        return p1, v1, p2, v2
+
+    # Normal vector (direction from p1 to p2)
+    normal = delta_p / distance
+    
+    # --- STEP 1: STATIC RESOLUTION (Separate the spheres) ---
+    # Calculate how much they overlap
+    overlap = (r1 + r2) - distance
+    
+    if overlap > 0:
+        # Move them apart proportional to the inverse of their masses
+        # If mass is equal, they move 50/50.
+        total_m = m1 + m2
+        p1 = p1 - normal * (overlap * (m2 / total_m))
+        p2 = p2 + normal * (overlap * (m1 / total_m))
+
+    # --- STEP 2: DYNAMIC RESOLUTION (Impulse) ---
+    # Relative velocity
+    rel_v = v1 - v2
+    
+    # Velocity component along the normal (dot product)
+    vel_along_normal = vec.dot(rel_v, normal)
+    
+    # If velocities are already moving apart, do nothing
+    if vel_along_normal < 0:
+        return p1, v1, p2, v2
+    
+    # Calculate impulse scalar
+    # Formula: j = -(1 + e) * (v_rel . n) / (1/m1 + 1/m2)
+    impulse_magnitude = (-(1 + elasticity) * vel_along_normal) / (1/m1 + 1/m2)
+    impulse = impulse_magnitude * normal
+    
+    # Apply impulse to velocities
+    v1_final = v1 + impulse / m1
+    v2_final = v2 - impulse / m2
+    
+    return p1, v1_final, p2, v2_final
 
 
 def update_coords(atoms, links, timestep=1):
@@ -362,9 +425,14 @@ def update_coords(atoms, links, timestep=1):
                 idx = c["atom"]
                 new_velocities[idx][c["c_axis"]] *= -0.9   # Wall collision losses
                 coords_within_box(step2_coords[idx], new_velocities[idx], radii[idx]* 1.01)
-                print(f"{idx = }, {step2_coords[idx] = }")
+                # print(f"{idx = }, {step2_coords[idx] = }")
             elif c["c_type"] == "atom":
-                pass    # TODO: ImplementMe!
+                idx0 = c["atoms"][0]
+                idx1 = c["atoms"][1]
+                resolve_collision(
+                    masses[idx0], radii[idx0], step2_coords[idx0], new_velocities[idx0],
+                    masses[idx1], radii[idx1], step2_coords[idx1], new_velocities[idx1])
+                coords_within_box(step2_coords[idx], new_velocities[idx], radii[idx]* 1.01)
             else:
                 raise Exception(f"Error: Unknown collision type: {c['type']}")
             

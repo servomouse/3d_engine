@@ -146,7 +146,7 @@ def get_temp_coords(radii, init_coords, init_velocities, num_atoms, timestep):
     return temp_coords
 
 
-def process_links(step1_coords, masses, links, timestep):
+def process_links(radii, step1_coords, masses, links, timestep):
     num_atoms = len(masses)
     fin_coords = copy.deepcopy(step1_coords)
     for _ in range(10):
@@ -162,6 +162,7 @@ def process_links(step1_coords, masses, links, timestep):
         for idx in range(num_atoms):
             if len(temp_coords[idx]) > 0:   # Skip if atom doesn't have any link
                 fin_coords[idx] = centroid(temp_coords[idx])
+                coords_within_box(fin_coords[idx], None, radii[idx]* 1.01)
 
     deltas = []
     for idx in range(num_atoms):
@@ -346,7 +347,7 @@ def update_coords(atoms, links, timestep=1):
             last_iter = True
 
         step1_coords = get_temp_coords(radii, coords, velocities, num_atoms, ts)
-        step2_coords, deltas = process_links(step1_coords, masses, links, ts)
+        step2_coords, deltas = process_links(radii, step1_coords, masses, links, ts)
         new_velocities = update_velocities(velocities, deltas, num_atoms, ts)
 
         c = get_first_collision(radii, coords, step2_coords, velocities, new_velocities, ts)
@@ -355,7 +356,7 @@ def update_coords(atoms, links, timestep=1):
             if (passed_time + uts) > timestep:
                 uts = timestep - passed_time
             step1_coords = get_temp_coords(radii, coords, velocities, num_atoms, uts)
-            step2_coords, deltas = process_links(step1_coords, masses, links, uts)
+            step2_coords, deltas = process_links(radii, step1_coords, masses, links, uts)
             new_velocities = update_velocities(velocities, deltas, num_atoms, uts)
             if c["c_type"] == "wall":
                 idx = c["atom"]
@@ -476,7 +477,7 @@ def update_world():
             canvas.delete(link["id"])
         link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
     print(f"\r{counter = }", end="")
-    # time.sleep(0.1)
+    time.sleep(1/60)
     # if counter == 5:
     #     sys.exit()
     root.after(40, update_world)

@@ -7,6 +7,7 @@ import math
 import copy
 import vector_math as vec
 from pid import pid_force
+from objects import add_wheel
 
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
@@ -377,76 +378,6 @@ atoms = [
         "mass": POINT_MASS,
         "color": "#FF0000"
     },
-    {
-        "id": None, # 3
-        "radius": ATOM_RADIUS,
-        "coords": [475, 340, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 0, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
-    {
-        "id": None, # 4
-        "radius": ATOM_RADIUS,
-        "coords": [525, 340, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 0, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
-    {
-        "id": None, # 5
-        "radius": ATOM_RADIUS,
-        "coords": [500, 300, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 0, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
-    {
-        "id": None, # 6
-        "radius": ATOM_RADIUS,
-        "coords": [525, 260, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 0, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
-    {
-        "id": None, # 7
-        "radius": ATOM_RADIUS,
-        "coords": [475, 260, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 0, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
-    {
-        "id": None, # 8
-        "radius": ATOM_RADIUS,
-        "coords": [550, 300, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 0, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
-    {
-        "id": None, # 9
-        "radius": ATOM_RADIUS,
-        "coords": [450, 300, 100],
-        "2d_coords": [],
-        "force": [0, 0],
-        "speed": [-2, 50, random.random()],
-        "mass": POINT_MASS,
-        "color": random_color()
-    },
 ]
 
 links = [
@@ -469,78 +400,6 @@ links = [
         "id": None
     },
     {
-        "atoms": [3, 4],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [4, 5],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [3, 5],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [3, 9],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [4, 8],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [5, 6],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [6, 7],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [5, 7],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [6, 8],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [9, 7],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [9, 5],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
-        "atoms": [5, 8],
-        "length": 50,
-        "stiffness": STIFFNESS,
-        "id": None
-    },
-    {
         "atoms": [10, 11],
         "length": 100,
         "stiffness": STIFFNESS,
@@ -559,6 +418,9 @@ links = [
         "id": None
     },
 ]
+
+
+add_wheel(atoms, links)
 
 
 # Add random atoms

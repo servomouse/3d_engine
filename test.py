@@ -120,9 +120,24 @@ def centroid(points):
     return [s / n for s in sums]
 
 
-def get_temp_coords(init_coords, init_velocities, num_atoms, timestep):
+def coords_within_box(coords, velocity, radius):
+    # Set velocity to None to not update it
+    for axis in range(NUM_DIMENSIONS):
+        if coords[axis] <= (WORLD_LIMITS[axis][0] + radius):
+            coords[axis] = WORLD_LIMITS[axis][0] + radius
+            if velocity and velocity[axis] < 0:
+                velocity[axis] *= -1
+        elif coords[axis] >= (WORLD_LIMITS[axis][1] - radius):
+            coords[axis] = WORLD_LIMITS[axis][1] - radius
+            if velocity and velocity[axis] > 0:
+                velocity[axis] *= -1
+
+
+def get_temp_coords(radii, init_coords, init_velocities, num_atoms, timestep):
     # Find next positions based on the current velocity and gravity
     temp_coords = []
+    for idx in range(num_atoms):
+        coords_within_box(init_coords[idx], init_velocities[idx], radii[idx]* 1.01)
     for idx in range(num_atoms):
         temp_v = vec.add(init_coords[idx], vec.scale(init_velocities[idx], timestep))
         if USE_GRAVITY:
@@ -153,6 +168,7 @@ def process_links(step1_coords, masses, links, timestep):
         d = vec.scale(vec.sub(fin_coords[idx], step1_coords[idx]), timestep)
         deltas.append(d)
         fin_coords[idx] = vec.add(step1_coords[idx], d)
+        vec.trim_coords(fin_coords[idx])
     return fin_coords, deltas
 
 
@@ -206,15 +222,21 @@ def wall_collision_time(initial_pos, velocity, acceleration, target_value):
     # Case 1: No acceleration (Linear equation: Bt + C = 0)
     if A == 0:
         if B == 0:
+            print("Stationary point")
             return None # Stationary and not at target
         t = -C / B
-        return t if t >= 0 else None
+        if t >= 0:
+            return t
+        else:
+            print("Negative time")
+            return None
 
     # Case 2: Quadratic equation (At^2 + Bt + C = 0)
     # Calculate discriminant: D = B^2 - 4AC
     discriminant = B**2 - 4 * A * C
     
     if discriminant < 0:
+        print("discriminant < 0")
         return None # No real solution (point turns back before hitting)
     
     sqrt_d = math.sqrt(discriminant)
@@ -224,7 +246,11 @@ def wall_collision_time(initial_pos, velocity, acceleration, target_value):
     # We want the smallest positive time
     solutions = [t for t in [t1, t2] if t >= 0]
     
-    return min(solutions) if solutions else None
+    if solutions:
+        return min(solutions)
+    else:
+        print(f"no solutions, {initial_pos = }, {velocity = }, {acceleration = }, {target_value = }")
+        return None
 
 
 def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep):
@@ -232,6 +258,7 @@ def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velo
     {
         "c_type": "wall",
         "c_time": timestep,
+        "c_axis": axis,
         "atom": -1,
     } or None
     """
@@ -248,8 +275,9 @@ def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velo
                 v1 = new_velocities[i][d]
                 dv = v1 - v0
                 a = dv / timestep
-                s = WORLD_LIMITS[d][0] + radii[i]
-                t = wall_collision_time(init_coords[i][d], v0, a, s)
+                t = wall_collision_time(init_coords[i][d], v0, a, s0)
+                if t is None:
+                    print(f"{i = }, {d = }, {new_coords[i][d] = }")
                 if t < min_t:
                     min_t = t
                     idx = i
@@ -259,8 +287,9 @@ def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velo
                 v1 = new_velocities[i][d]
                 dv = v1 - v0
                 a = dv / timestep
-                s = WORLD_LIMITS[d][1] - radii[i]
-                t = wall_collision_time(init_coords[i][d], v0, a, s)
+                t = wall_collision_time(init_coords[i][d], v0, a, s1)
+                if t is None:
+                    print(f"{i = }, {d = }, {new_coords[i][d] = }")
                 if t < min_t:
                     min_t = t
                     idx = i
@@ -278,7 +307,7 @@ def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velo
 def get_atom_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep):
     """ Return value: 
     {
-        "c_type": "wall",
+        "c_type": "atom",
         "c_time": timestep,
         "atoms": [-1, -1]
     } or None
@@ -315,36 +344,46 @@ def update_coords(atoms, links, timestep=1):
         if (passed_time + ts) > timestep:
             ts = timestep - passed_time
             last_iter = True
-        step1_coords = get_temp_coords(coords, velocities, num_atoms, ts)
+
+        step1_coords = get_temp_coords(radii, coords, velocities, num_atoms, ts)
         step2_coords, deltas = process_links(step1_coords, masses, links, ts)
         new_velocities = update_velocities(velocities, deltas, num_atoms, ts)
-        c = get_first_collision(radii, coords, step2_coords, velocities, new_velocities, ts)
-        c_counter = 0
-        while c and c_counter < (num_atoms * 2):
-            raise Exception("Collision detected!")
-            process_collision(c, coords, step2_coords, velocities, new_velocities, ts)
-            c = get_first_collision(coords, step2_coords, velocities, new_velocities, ts)
-            c_counter += 1
 
-        # Process collisions:
-        # TODO: ImplementMe!
+        c = get_first_collision(radii, coords, step2_coords, velocities, new_velocities, ts)
+        if c:
+            uts = c["c_time"]
+            if (passed_time + uts) > timestep:
+                uts = timestep - passed_time
+            step1_coords = get_temp_coords(radii, coords, velocities, num_atoms, uts)
+            step2_coords, deltas = process_links(step1_coords, masses, links, uts)
+            new_velocities = update_velocities(velocities, deltas, num_atoms, uts)
+            if c["c_type"] == "wall":
+                idx = c["atom"]
+                new_velocities[idx][c["c_axis"]] *= -0.9   # Wall collision losses
+                coords_within_box(step2_coords[idx], new_velocities[idx], radii[idx]* 1.01)
+                print(f"{idx = }, {step2_coords[idx] = }")
+            elif c["c_type"] == "atom":
+                pass    # TODO: ImplementMe!
+            else:
+                raise Exception(f"Error: Unknown collision type: {c['type']}")
+            
+            passed_time += uts
+        else:
+            passed_time += ts
 
         # Update coords:
-        # coords = copy.deepcopy(step2_coords)
-        # velocities = copy.deepcopy(new_velocities)
         for idx in range(num_atoms):
             for d in range(NUM_DIMENSIONS):
                 coords[idx][d]     = step2_coords[idx][d]
                 velocities[idx][d] = new_velocities[idx][d]
 
-        passed_time += ts
         if last_iter:   # Avoid float errors
             break
 
     # Update coords:
     for idx in range(num_atoms):
-        atoms[idx]["coords"] = step2_coords[idx]
-        atoms[idx]["speed"] = new_velocities[idx]
+        atoms[idx]["coords"] = coords[idx]
+        atoms[idx]["speed"] = velocities[idx]
 
 
 atoms = [

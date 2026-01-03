@@ -120,28 +120,44 @@ def centroid(points):
     return [s / n for s in sums]
 
 
-def coords_within_box(coords, velocity, radius):
+def invert_velocity(v, c_axis, factor):
+    for axis in range(NUM_DIMENSIONS):
+        if axis == c_axis:
+            v[axis] *= -factor
+        # else:
+        #     v[axis] *= factor/20    # Desrease velocity along other axes to imitate friction
+
+
+def coords_within_box(coords, velocity, radius, velocity_conservation=1):
     # Set velocity to None to not update it
+    collision_found =False
     for axis in range(NUM_DIMENSIONS):
         if coords[axis] <= (WORLD_LIMITS[axis][0] + radius):
             coords[axis] = WORLD_LIMITS[axis][0] + radius
             if velocity and velocity[axis] < 0:
-                velocity[axis] *= -1
+                invert_velocity(velocity, axis, velocity_conservation)
+            collision_found = True
         elif coords[axis] >= (WORLD_LIMITS[axis][1] - radius):
             coords[axis] = WORLD_LIMITS[axis][1] - radius
             if velocity and velocity[axis] > 0:
-                velocity[axis] *= -1
+                invert_velocity(velocity, axis, velocity_conservation)
+            collision_found = True
+    return collision_found
 
 
 def get_temp_coords(radii, init_coords, init_velocities, num_atoms, timestep):
     # Find next positions based on the current velocity and gravity
     temp_coords = []
+    collided_atoms = []
     for idx in range(num_atoms):
-        coords_within_box(init_coords[idx], init_velocities[idx], radii[idx]* 1.01)
+        if coords_within_box(init_coords[idx], init_velocities[idx], radii[idx]* 1.01, 0.9):
+            collided_atoms.append(idx)
     for idx in range(num_atoms):
         temp_v = vec.add(init_coords[idx], vec.scale(init_velocities[idx], timestep))
         if USE_GRAVITY:
-            temp_v[VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
+            if idx not in collided_atoms:
+                # Accelerate half way, decelerate half way -> no total acceleration
+                temp_v[VERTICAL_AXIS] += (G_CONST * timestep**2) / 2
         temp_coords.append(temp_v)
     return temp_coords
 
@@ -194,152 +210,11 @@ def get_time_substep(velocities, radii, num_atoms):
 
     if v_max == 0:
         return 1
+    v_max *= 2  # Double to get half a radius
     return r / v_max
 
 
-def wall_collision_time(initial_pos, velocity, acceleration, target_value):
-    """
-    Calculates the smallest positive time 't' when a point hits a target value 
-    along a specific dimension.
-    
-    Args:
-        initial_pos (float): Initial coordinate
-        velocity (float): Initial velocity along the axis
-        acceleration (float): Constant acceleration
-        target_value (float): The coordinate value of the "wall"
-        
-    Returns:
-        float: The earliest positive time t, or None if it never hits.
-    """
-    x0 = initial_pos
-    v0 = velocity
-    a = acceleration
-    
-    # Coefficients for the quadratic equation: At^2 + Bt + C = 0
-    A = 0.5 * a
-    B = v0
-    C = x0 - target_value
-
-    # Case 1: No acceleration (Linear equation: Bt + C = 0)
-    if A == 0:
-        if B == 0:
-            print("Stationary point")
-            return None # Stationary and not at target
-        t = -C / B
-        if t >= 0:
-            return t
-        else:
-            print("Negative time")
-            return None
-
-    # Case 2: Quadratic equation (At^2 + Bt + C = 0)
-    # Calculate discriminant: D = B^2 - 4AC
-    discriminant = B**2 - 4 * A * C
-    
-    if discriminant < 0:
-        print("discriminant < 0")
-        return None # No real solution (point turns back before hitting)
-    
-    sqrt_d = math.sqrt(discriminant)
-    t1 = (-B + sqrt_d) / (2 * A)
-    t2 = (-B - sqrt_d) / (2 * A)
-    
-    # We want the smallest positive time
-    solutions = [t for t in [t1, t2] if t >= 0]
-    
-    if solutions:
-        return min(solutions)
-    else:
-        print(f"no solutions, {initial_pos = }, {velocity = }, {acceleration = }, {target_value = }")
-        return None
-
-
-def get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep):
-    """ Return value: 
-    {
-        "c_type": "wall",
-        "c_time": timestep,
-        "c_axis": axis,
-        "atom": -1,
-    } or None
-    """
-    num_atoms = len(init_coords)
-    min_t = timestep
-    idx = -1
-    axis = 0
-    for i in range(num_atoms):
-        for d in range(NUM_DIMENSIONS):
-            s0 = WORLD_LIMITS[d][0] + radii[i]
-            s1 = WORLD_LIMITS[d][1] - radii[i]
-            if new_coords[i][d] <= s0:
-                v0 = init_velocities[i][d]
-                v1 = new_velocities[i][d]
-                dv = v1 - v0
-                a = dv / timestep
-                t = wall_collision_time(init_coords[i][d], v0, a, s0)
-                if t is None:
-                    print(f"{i = }, {d = }, {new_coords[i][d] = }")
-                if t < min_t:
-                    min_t = t
-                    idx = i
-                    axis = d
-            elif new_coords[i][d] >= s1:
-                v0 = init_velocities[i][d]
-                v1 = new_velocities[i][d]
-                dv = v1 - v0
-                a = dv / timestep
-                t = wall_collision_time(init_coords[i][d], v0, a, s1)
-                if t is None:
-                    print(f"{i = }, {d = }, {new_coords[i][d] = }")
-                if t < min_t:
-                    min_t = t
-                    idx = i
-                    axis = d
-    if idx > -1:
-        return {
-        "c_type": "wall",
-        "c_time": min_t,
-        "c_axis": axis,
-        "atom": idx,
-    }
-    return None
-
-
-def collision_time(r0, c0, v0, r1, c1, v1):
-    pass
-
-
-def get_atom_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep):
-    """ Return value: 
-    {
-        "c_type": "atom",
-        "c_time": timestep,
-        "atoms": [-1, -1]
-    } or None
-    """
-    num_atoms = len(init_coords)
-    for idx0 in range(num_atoms):
-        for idx1 in range(num_atoms):
-            r_sum = radii[idx0]+radii[idx1]
-            d = vec.distance(new_coords[idx0], new_coords[idx1])
-            if d <= r_sum:
-                pass
-    return None
-
-
-def get_first_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep):
-    ts1 = get_edge_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep)
-    ts2 = get_atom_collision(radii, init_coords, new_coords, init_velocities, new_velocities, timestep)
-    if ts1 and ts2:
-        if ts1["c_time"] < ts2["c_time"]:
-            return ts1
-        return ts2
-    if ts1:
-        return ts1
-    return None
-
-
-def resolve_collision(m1, r1, p1, v1, m2, r2, p2, v2, elasticity=1.0):
+def resolve_collision(m1, r1, p1, v1, m2, r2, p2, v2, elasticity=0.9):
     """
     Calculates post-collision velocities and positions for two spheres.
     
@@ -349,50 +224,74 @@ def resolve_collision(m1, r1, p1, v1, m2, r2, p2, v2, elasticity=1.0):
     p1, p2 : array - Position vectors
     v1, v2 : array - Velocity vectors
     elasticity : float - Coefficient of restitution (1.0 = perfectly elastic)
-    """
-    # 1. Coordinate and Distance Math
-    delta_p = vec.sub(p2, p1)
+    """# 1. Directional Vector (p2 - p1)
+    delta_p = [p2[i] - p1[i] for i in range(len(p1))]
     distance = vec.magnitude(delta_p)
     
-    # Avoid division by zero if centers are exactly at the same point
-    if distance == 0:
+    if distance == 0: 
         return p1, v1, p2, v2
 
-    # Normal vector (direction from p1 to p2)
-    normal = delta_p / distance
+    # 2. Normal Unit Vector
+    normal = [x / distance for x in delta_p]
     
-    # --- STEP 1: STATIC RESOLUTION (Separate the spheres) ---
-    # Calculate how much they overlap
+    # --- STEP 1: STATIC RESOLUTION (Separation) ---
     overlap = (r1 + r2) - distance
-    
     if overlap > 0:
-        # Move them apart proportional to the inverse of their masses
-        # If mass is equal, they move 50/50.
         total_m = m1 + m2
-        p1 = p1 - normal * (overlap * (m2 / total_m))
-        p2 = p2 + normal * (overlap * (m1 / total_m))
+        # Move p1 back and p2 forward based on mass ratio
+        move_dist1 = overlap * (m2 / total_m)
+        move_dist2 = overlap * (m1 / total_m)
+        
+        p1 = [p1[i] - normal[i] * move_dist1 for i in range(len(p1))]
+        p2 = [p2[i] + normal[i] * move_dist2 for i in range(len(p2))]
 
     # --- STEP 2: DYNAMIC RESOLUTION (Impulse) ---
-    # Relative velocity
-    rel_v = v1 - v2
+    # Relative velocity (v1 - v2)
+    rel_v = [v1[i] - v2[i] for i in range(len(v1))]
     
-    # Velocity component along the normal (dot product)
+    # Normal velocity (scalar projection)
     vel_along_normal = vec.dot(rel_v, normal)
     
-    # If velocities are already moving apart, do nothing
+    # If they are already moving apart, don't bounce
     if vel_along_normal < 0:
         return p1, v1, p2, v2
     
-    # Calculate impulse scalar
+    # Impulse scalar calculation
     # Formula: j = -(1 + e) * (v_rel . n) / (1/m1 + 1/m2)
-    impulse_magnitude = (-(1 + elasticity) * vel_along_normal) / (1/m1 + 1/m2)
-    impulse = impulse_magnitude * normal
+    impulse_mag = (-(1 + elasticity) * vel_along_normal) / (1/m1 + 1/m2)
     
-    # Apply impulse to velocities
-    v1_final = v1 + impulse / m1
-    v2_final = v2 - impulse / m2
+    # Final velocities
+    v1_final = [v1[i] + (normal[i] * impulse_mag) / m1 for i in range(len(v1))]
+    v2_final = [v2[i] - (normal[i] * impulse_mag) / m2 for i in range(len(v2))]
     
     return p1, v1_final, p2, v2_final
+
+
+def wall_collisions(radii, coords, velocities, num_atoms):
+    collision_found = False
+    for idx in range(num_atoms):
+        if coords_within_box(coords[idx], velocities[idx], radii[idx]* 1.01, 0.9):
+            collision_found = True
+    return collision_found
+
+
+def atom_collisions(radii, masses, coords, velocities, num_atoms):
+    collision_found = False
+    for idx0 in range(num_atoms-1):
+        for idx1 in range(idx0+1, num_atoms):
+            d = vec.distance(coords[idx0], coords[idx1])
+            rsum = radii[idx0] + radii[idx1]
+            if d < rsum:
+                # print(f"Atom collision detected! {d = }, {rsum = }, {coords[idx0] = }, {coords[idx1] = }")
+                c0, v0, c1, v1 = resolve_collision(
+                    masses[idx0], radii[idx0], coords[idx0], velocities[idx0],
+                    masses[idx1], radii[idx1], coords[idx1], velocities[idx1])
+                coords[idx0] = c0
+                velocities[idx0] = v0
+                coords[idx1] = c1
+                velocities[idx1] = v1
+                collision_found = True
+    return collision_found
 
 
 def update_coords(atoms, links, timestep=1):
@@ -413,32 +312,15 @@ def update_coords(atoms, links, timestep=1):
         step2_coords, deltas = process_links(radii, step1_coords, masses, links, ts)
         new_velocities = update_velocities(velocities, deltas, num_atoms, ts)
 
-        c = get_first_collision(radii, coords, step2_coords, velocities, new_velocities, ts)
-        if c:
-            uts = c["c_time"]
-            if (passed_time + uts) > timestep:
-                uts = timestep - passed_time
-            step1_coords = get_temp_coords(radii, coords, velocities, num_atoms, uts)
-            step2_coords, deltas = process_links(radii, step1_coords, masses, links, uts)
-            new_velocities = update_velocities(velocities, deltas, num_atoms, uts)
-            if c["c_type"] == "wall":
-                idx = c["atom"]
-                new_velocities[idx][c["c_axis"]] *= -0.9   # Wall collision losses
-                coords_within_box(step2_coords[idx], new_velocities[idx], radii[idx]* 1.01)
-                # print(f"{idx = }, {step2_coords[idx] = }")
-            elif c["c_type"] == "atom":
-                idx0 = c["atoms"][0]
-                idx1 = c["atoms"][1]
-                resolve_collision(
-                    masses[idx0], radii[idx0], step2_coords[idx0], new_velocities[idx0],
-                    masses[idx1], radii[idx1], step2_coords[idx1], new_velocities[idx1])
-                coords_within_box(step2_coords[idx], new_velocities[idx], radii[idx]* 1.01)
-            else:
-                raise Exception(f"Error: Unknown collision type: {c['type']}")
-            
-            passed_time += uts
-        else:
-            passed_time += ts
+        c_counter = num_atoms * 2
+        while c_counter > 0:
+            wc = wall_collisions(radii, step2_coords, new_velocities, num_atoms)
+            ac = atom_collisions(radii, masses, step2_coords, new_velocities, num_atoms)
+            if (not wc) and (not ac):
+                break
+            c_counter -= 1
+
+        passed_time += ts
 
         # Update coords:
         for idx in range(num_atoms):
@@ -453,6 +335,13 @@ def update_coords(atoms, links, timestep=1):
     for idx in range(num_atoms):
         atoms[idx]["coords"] = coords[idx]
         atoms[idx]["speed"] = velocities[idx]
+
+
+def random_color():
+    r = random.randint(0, 255)
+    g = random.randint(0, 255)
+    b = random.randint(0, 255)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 atoms = [
@@ -484,13 +373,67 @@ atoms = [
         "color": "#FF0000"
     },
     {
-        "id": None,
+        "id": None, # 3
         "radius": ATOM_RADIUS,
-        "coords": [300, 300],
+        "coords": [475, 340],
         "force": [0, 0],
-        "speed": [5, 15],
+        "speed": [-2, 0],
         "mass": POINT_MASS,
-        "color": "#FFFF00"
+        "color": random_color()
+    },
+    {
+        "id": None, # 4
+        "radius": ATOM_RADIUS,
+        "coords": [525, 340],
+        "force": [0, 0],
+        "speed": [-2, 0],
+        "mass": POINT_MASS,
+        "color": random_color()
+    },
+    {
+        "id": None, # 5
+        "radius": ATOM_RADIUS,
+        "coords": [500, 300],
+        "force": [0, 0],
+        "speed": [-2, 0],
+        "mass": POINT_MASS,
+        "color": random_color()
+    },
+    {
+        "id": None, # 6
+        "radius": ATOM_RADIUS,
+        "coords": [525, 260],
+        "force": [0, 0],
+        "speed": [-2, 0],
+        "mass": POINT_MASS,
+        "color": random_color()
+    },
+    {
+        "id": None, # 7
+        "radius": ATOM_RADIUS,
+        "coords": [475, 260],
+        "force": [0, 0],
+        "speed": [-2, 0],
+        "mass": POINT_MASS,
+        "color": random_color()
+    },
+    {
+        "id": None, # 8
+        "radius": ATOM_RADIUS,
+        "coords": [550, 300],
+        "force": [0, 0],
+        "speed": [-2, 0],
+        "mass": POINT_MASS,
+        "color": random_color()
+    },
+    {
+        "id": None, # 9
+        "radius": ATOM_RADIUS,
+        "coords": [450, 300],
+        "force": [0, 0],
+        "speed": [-2, 0],
+        "mass": POINT_MASS,
+        "color": random_color()
     },
 ]
 
@@ -513,7 +456,113 @@ links = [
         "stiffness": STIFFNESS,
         "id": None
     },
+    {
+        "atoms": [3, 4],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [4, 5],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [3, 5],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [3, 9],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [4, 8],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [5, 6],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [6, 7],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [5, 7],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [6, 8],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [9, 7],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [9, 5],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    {
+        "atoms": [5, 8],
+        "length": 50,
+        "stiffness": STIFFNESS,
+        "id": None
+    },
+    # {
+    #     "atoms": [4, 7],
+    #     "length": 100,
+    #     "stiffness": STIFFNESS,
+    #     "id": None
+    # },
+    # {
+    #     "atoms": [6, 3],
+    #     "length": 100,
+    #     "stiffness": STIFFNESS,
+    #     "id": None
+    # },
+    # {
+    #     "atoms": [9, 8],
+    #     "length": 100,
+    #     "stiffness": STIFFNESS,
+    #     "id": None
+    # },
 ]
+
+
+# Add random atoms
+for i in range(20):
+    atoms.append({
+        "id": None,
+        "radius": ATOM_RADIUS,
+        "coords": [
+            random.randint(WORLD_LIMITS[0][0]+50, WORLD_LIMITS[0][1]-50),
+            random.randint(WORLD_LIMITS[1][0]+50, WORLD_LIMITS[1][1]-50)
+        ],
+        "force": [0, 0],
+        "speed": [random.randint(-10, 10), random.randint(-10, 10)],
+        "mass": POINT_MASS,
+        "color": random_color()
+    })
 
 # Create the main window
 root = tk.Tk()
@@ -546,6 +595,8 @@ def update_world():
         link["id"] = draw_line(canvas, atoms[link["atoms"][0]]["coords"], atoms[link["atoms"][1]]["coords"])
     print(f"\r{counter = }", end="")
     time.sleep(1/60)
+    if counter == 200:
+        links[0]["length"] = 35
     # if counter == 5:
     #     sys.exit()
     root.after(40, update_world)

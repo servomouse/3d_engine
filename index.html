@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Graph Editor</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a1a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        #sidebar {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 200px;
+            height: 100vh;
+            background: rgba(30, 30, 30, 0.9);
+            color: white;
+            padding: 20px;
+            box-sizing: border-box;
+            border-left: 1px solid #444;
+        }
+
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #888;
+            margin: 20px 0 10px 0;
+            letter-spacing: 1px;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        .btn {
+            width: 100%;
+            padding: 10px;
+            cursor: pointer;
+            border: 1px solid #444;
+            background: #333;
+            color: white;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .btn:hover {
+            background: #444;
+        }
+        .switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .mode-container {
+            background: #222;
+            border-radius: 6px;
+            padding: 10px;
+            border: 1px solid #333;
+        }
+        #status {
+            position: absolute;
+            bottom: 20px;
+            right: 240px;
+            color: #00ff88;
+            font-size: 13px;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 15px;
+            border-radius: 20px;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #888;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        #context-menu {
+            display: none;
+            position: absolute;
+            background: #252525;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            width: 180px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2 style="margin-top:0; font-size: 18px;">Graph Editor</h2>
+        <div class="section-title">File</div>
+        <button id="btn-save" class="btn" style="margin-bottom: 5px;">Save to File</button>
+        <button id="btn-load" class="btn">Load from File</button>
+        <input type="file" id="file-input" style="display: none;" accept=".json">
+        <div class="section-title">Display planes</div>
+        <div class="mode-container">
+            <label class="switch"><input type="checkbox" id="toggle-xz" checked> XZ Plane</label>
+            <label class="switch"><input type="checkbox" id="toggle-xy" checked> XY Plane</label>
+            <label class="switch"><input type="checkbox" id="toggle-yz" checked> YZ Plane</label>
+        </div>
+        <div class="section-title">Tool Mode</div>
+        <div class="mode-container">
+            <label class="switch"><input type="radio" name="mode" value="transform" checked> Transform</label>
+            <label class="switch"><input type="radio" name="mode" value="connect"> Connect</label>
+            <label class="switch"><input type="radio" name="mode" value="delete"> Delete</label>
+        </div>
+    </div>
+
+    <div id="status">Mode: Transform</div>
+    <div id="instructions">
+        Middle Mouse: Orbit | Wheel: Zoom | Left Click: Action
+    </div>
+    <div id="context-menu">
+        <div class="section-title" style="margin-top:0">Edit Node</div>
+        
+        <label class="switch" style="font-size: 11px;">Color (Hex: #00ff88)</label>
+        <input type="text" id="menu-color" class="btn" style="text-align: left; box-sizing: border-box; margin-bottom: 10px;" placeholder="#ffffff">
+        
+        <label class="switch" style="font-size: 11px;">Coordinates (X, Y, Z)</label>
+        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+            <input type="number" id="menu-x" step="0.5" style="width: 100%; background: #111; color: white; border: 1px solid #444; padding: 3px;">
+            <input type="number" id="menu-y" step="0.5" style="width: 100%; background: #111; color: white; border: 1px solid #444; padding: 3px;">
+            <input type="number" id="menu-z" step="0.5" style="width: 100%; background: #111; color: white; border: 1px solid #444; padding: 3px;">
+        </div>
+        
+        <button id="menu-apply" class="btn" style="background: #00ff88; color: #000; font-weight: bold;">Apply Changes</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ==========================================
+        // 1. CORE CONFIGURATION & STATE
+        // ==========================================
+        const state = {
+            nodes: [],
+            connections: [],
+            selectedNodes: [],
+            nodeToConnect: null,
+            currentMode: 'transform',
+            draggingAxis: null,
+            editingNode: null
+        };
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const dragOffset = new THREE.Vector3();
+        const intersectionPlane = new THREE.Plane();
+        const worldPosition = new THREE.Vector3();
+
+        const statusDiv = document.getElementById('status');
+        const fileInput = document.getElementById('file-input');
+        const menu = document.getElementById('context-menu');
+        const sidebar = document.getElementById("sidebar");
+        const sideBarWidth = sidebar.offsetWidth;
+
+        // ==========================================
+        // 2. SCENE SETUP
+        // ==========================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x151515);
+
+        const camera = new THREE.PerspectiveCamera(75, (window.innerWidth - sideBarWidth) / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 15, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth - sideBarWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // ==========================================
+        // 3. TRANSFORM GIZMO
+        // ==========================================
+        const gizmo = new THREE.Group();
+        gizmo.visible = false;
+        scene.add(gizmo);
+
+        function createGizmoAxis(color, axisVector) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({ color, depthTest: false });
+            
+            const line = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2), mat);
+            line.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), axisVector);
+            line.position.add(axisVector);
+            
+            const handle = new THREE.Mesh(new THREE.SphereGeometry(0.15), mat);
+            handle.position.copy(axisVector).multiplyScalar(2);
+            
+            group.add(line, handle);
+            group.userData.axis = axisVector;
+            group.renderOrder = 999;
+            return group;
+        }
+        gizmo.add(createGizmoAxis(0xff4444, new THREE.Vector3(1,0,0)));
+        gizmo.add(createGizmoAxis(0x44ff44, new THREE.Vector3(0,1,0)));
+        gizmo.add(createGizmoAxis(0x4444ff, new THREE.Vector3(0,0,1)));
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.mouseButtons = { MIDDLE: THREE.MOUSE.ROTATE };
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const pl = new THREE.PointLight(0xffffff, 100);
+        pl.position.set(10, 10, 10);
+        scene.add(pl);
+
+        // ==========================================
+        // 4. GRID & RAYCAST PLANES
+        // ==========================================
+        const size = 20;
+        const divisions = 20;
+
+        const gridXZ = new THREE.GridHelper(size, divisions, 0xff0000, 0x444444);
+
+        const gridXY = new THREE.GridHelper(size, divisions, 0x00ff00, 0x444444);
+        gridXY.rotation.x = Math.PI/2; // Tilt it up
+
+        const gridYZ = new THREE.GridHelper(size, divisions, 0x0000ff, 0x444444);
+        gridYZ.rotation.z = Math.PI/2; // Stand it up
+        gridYZ.rotation.x = Math.PI/2; // Corrected double-rotation for visual helper
+        scene.add(gridXZ, gridXY, gridYZ);
+
+        const planeGeo = new THREE.PlaneGeometry(size, size);
+        const createRayPlane = (axis) => {
+            const p = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+            
+            if (axis === 'XZ') {
+                p.rotation.x = -Math.PI / 2;
+            } else if (axis === 'XY') {
+                ; // Default orientation is XY, no rotation needed
+            } else if (axis === 'YZ') {
+                p.rotation.y = Math.PI / 2; // Rotate specifically on Y to face the X-axis
+            }
+            
+            scene.add(p);
+            return p;
+        };
+
+        const rayPlanes = [
+            { mesh: createRayPlane('XZ'), helper: gridXZ },
+            { mesh: createRayPlane('XY'), helper: gridXY },
+            { mesh: createRayPlane('YZ'), helper: gridYZ }
+        ];
+
+        // --- Interaction Logic ---
+        function mouseClickDeleteMode() {
+            const nodeHits = raycaster.intersectObjects(state.nodes);
+            if (nodeHits.length > 0) {
+                deleteNode(nodeHits[0].object);
+                statusDiv.textContent = "Node deleted.";
+                return;
+            }
+
+            // Check for connection hits if no node was hit
+            const allLines = state.connections.map(c => c.line);
+            const lineHits = raycaster.intersectObjects(allLines);
+            if (lineHits.length > 0) {
+                const hitLine = lineHits[0].object;
+                const connIndex = state.connections.findIndex(c => c.line === hitLine);
+                
+                if (connIndex !== -1) {
+                    const conn = state.connections[connIndex];
+                    scene.remove(conn.line);
+                    conn.line.geometry.dispose();
+                    conn.line.material.dispose();
+                    state.connections.splice(connIndex, 1);
+                    statusDiv.textContent = "Connection deleted.";
+                }
+                return;
+            }
+        }
+
+        function emptySpaceClick() {
+            const activePlanes = rayPlanes.filter(p => p.helper.visible).map(p => p.mesh);
+            const planeIntersects = raycaster.intersectObjects(activePlanes);
+            if (planeIntersects.length > 0) {
+                const newNode = addNode(planeIntersects[0].point, 0x00ff88);    // Default color
+                updateSelection(newNode, event.ctrlKey);
+            } else {
+                deselect();
+            }
+        }
+
+        function connectModeClick() {
+            const nodeIntersects = raycaster.intersectObjects(state.nodes);
+            if (nodeIntersects.length > 0) {
+                const node = nodeIntersects[0].object;
+                if (!state.nodeToConnect) {
+                    state.nodeToConnect = node;
+                    statusDiv.textContent = `From: ${nodeToConnect.userData.id}. Click next...`;
+                } else {
+                    addConnection(state.nodeToConnect, node);
+                    state.nodeToConnect = null;
+                    statusDiv.textContent = "Connected.";
+                }
+            }
+        }
+
+        function gizmoClick(gizmoHandle) {
+            let obj = gizmoHandle.object;
+            while(obj.parent && !obj.userData.axis) {
+                obj = obj.parent;
+            }
+            state.draggingAxis = obj.userData.axis;
+            const normal = new THREE.Vector3();
+            camera.getWorldDirection(normal);
+            intersectionPlane.setFromNormalAndCoplanarPoint(normal, gizmoHandle.point);
+            const leadNode = state.selectedNodes[state.selectedNodes.length - 1];
+            dragOffset.copy(gizmoHandle.point).sub(leadNode.position);
+        }
+
+        window.addEventListener('mousedown', (event) => {
+            if (event.button !== 0 || event.clientX > window.innerWidth - sideBarWidth) return;
+
+            updateMouse(event);
+            raycaster.setFromCamera(mouse, camera);
+
+            if (state.currentMode === 'transform') {
+                const gizmoIntersects = raycaster.intersectObjects(gizmo.children, true);
+                if (gizmoIntersects.length > 0) {   // Handle gizmo if needed
+                    controls.enabled = false;
+                    gizmoClick(gizmoIntersects[0]);
+                    return;
+                }
+                const nodeIntersects = raycaster.intersectObjects(state.nodes);
+                if (nodeIntersects.length > 0) {    // Handle node
+                    updateSelection(nodeIntersects[0].object, event.ctrlKey);
+                    return;
+                }
+                emptySpaceClick();
+            } else if (state.currentMode === 'delete') {
+                mouseClickDeleteMode();
+            } else if (state.currentMode === 'connect') {
+                connectModeClick();
+            }
+        });
+
+        window.addEventListener('mousemove', (event) => {
+            // Check if we have a dragging axis and at least one node selected
+            if (!state.draggingAxis || state.selectedNodes.length === 0) return;
+            
+            updateMouse(event);
+            raycaster.setFromCamera(mouse, camera);
+
+            if (raycaster.ray.intersectPlane(intersectionPlane, worldPosition)) {
+                // The "lead" node is the one the gizmo is attached to (the last selected)
+                const leadNode = state.selectedNodes[state.selectedNodes.length - 1];
+                
+                const targetPos = worldPosition.clone().sub(dragOffset);
+
+                // Calculate the movement vector relative to current position
+                const moveVec = targetPos.sub(leadNode.position);
+
+                // Project that movement onto our constrained axis
+                const projection = moveVec.dot(state.draggingAxis);
+
+                // This is our movement delta for this frame
+                const delta = state.draggingAxis.clone().multiplyScalar(projection);
+
+                // Apply delta to all selected nodes
+                state.selectedNodes.forEach(node => {
+                    node.position.add(delta);
+                });
+
+                // Keep gizmo synced with the lead node
+                gizmo.position.copy(leadNode.position);
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.draggingAxis = null;
+            controls.enabled = true;
+        });
+
+        // ==========================================
+        // 5. GRAPH LOGIC
+        // ==========================================
+
+        function updateSelection(node, isMultiSelect) {
+            if (!isMultiSelect) {
+                // Clear previous selections if Ctrl is not held
+                state.selectedNodes.forEach(n => {
+                    n.material.emissive.setHex(0x000000);
+                });
+                state.selectedNodes = [node];
+                node.material.emissive.setHex(0x5555ff); // Add some glow
+            } else {
+                // Toggle node in the selection array
+                const index = state.selectedNodes.indexOf(node);
+                if (index > -1) {   // Deselect if already selected
+                    node.material.emissive.setHex(0x000000);
+                    state.selectedNodes.splice(index, 1);
+                } else {
+                    node.material.emissive.setHex(0x5555ff); // Add some glow
+                    state.selectedNodes.push(node);
+                }
+            }
+
+            // Show gizmo on the last selected node
+            if (state.selectedNodes.length > 0) {
+                const lastNode = state.selectedNodes[state.selectedNodes.length - 1];
+                gizmo.position.copy(lastNode.position);
+                gizmo.visible = true;
+            } else {
+                gizmo.visible = false;
+            }
+        }
+
+        function deselect() {
+            state.selectedNodes.forEach(n => n.material.emissive.setHex(0x000000));
+            state.selectedNodes = [];
+            gizmo.visible = false;
+        }
+
+        function addNode(pos, color) {
+            const node = new THREE.Mesh(
+                new THREE.SphereGeometry(0.3, 32, 32), 
+                new THREE.MeshStandardMaterial({ color: color, roughness: 0.3 })
+            );
+            node.position.copy(pos);
+            node.userData.id = Date.now();
+            scene.add(node);
+            state.nodes.push(node);
+            return node;
+        }
+
+        function deleteNode(node) {
+            // 1. Find and remove all connections associated with this node
+            for (let i = state.connections.length - 1; i >= 0; i--) {
+                const conn = state.connections[i];
+                if (conn.nodeA === node || conn.nodeB === node) {
+                    scene.remove(conn.line);
+                    conn.line.geometry.dispose();
+                    conn.line.material.dispose();
+                    state.connections.splice(i, 1);
+                }
+            }
+            // 2. Remove the node itself
+            scene.remove(node);
+            node.geometry.dispose();
+            node.material.dispose();
+            state.nodes.splice(state.nodes.indexOf(node), 1);
+            // 3. Clear selection if the deleted node was selected
+            // if (state.selectedNode === node) deselect();
+        }
+
+        function addConnection(nodeA, nodeB) {
+            if (nodeA === nodeB) return;
+            const exists = state.connections.find(c => 
+                (c.nodeA === nodeA && c.nodeB === nodeB) || (c.nodeA === nodeB && c.nodeB === nodeA)
+            );
+            if (exists) return;
+
+            // Use a Cylinder instead of a Line for thickness and better raycasting
+            const geometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x00ff00, 
+                transparent: true, 
+                opacity: 0.6 
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // Custom flag so the raycaster knows this is a deletable link
+            mesh.userData.isConnection = true;
+
+            scene.add(mesh);
+            state.connections.push({
+                id: Date.now() + Math.random(), // Added random to prevent collisions in same-millisecond loops
+                nodeA,
+                nodeB,
+                line: mesh // Keeping the property name 'line' for compatibility with your loop
+            });
+        }
+
+        // ==========================================
+        // 6. INTERACTION & EVENTS
+        // ==========================================
+        function updateMouse(e) {
+            mouse.x = (e.clientX / (window.innerWidth - sideBarWidth)) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        // ==========================================
+        // 7. UI & FILE I/O
+        // ==========================================
+        document.querySelectorAll('input[name="mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                state.currentMode = e.target.value;
+                statusDiv.textContent = `Mode: ${state.currentMode.charAt(0).toUpperCase() + state.currentMode.slice(1)}`;
+                deselect();
+                state.nodeToConnect = null;
+            });
+        });
+
+        document.getElementById('btn-save').addEventListener('click', () => {
+            const data = {
+                nodes: state.nodes.map(n => ({
+                    id: n.userData.id,
+                    position: n.position.toArray(),
+                    color: '#' + n.material.color.getHexString()
+                })),
+                connections: state.connections.map(c => ({
+                    nodeA: c.nodeA.userData.id,
+                    nodeB: c.nodeB.userData.id
+                }))
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'my_graph.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('btn-load').addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                loadGraph(data);
+            };
+            reader.readAsText(file);
+        });
+
+        function loadGraph(data) {
+            // 1. Clear current scene
+            state.nodes.forEach(n => scene.remove(n));
+            state.connections.forEach(c => scene.remove(c.line));
+            state.nodes = [];
+            state.connections = [];
+            deselect();
+
+            // 2. Recreate Nodes
+            const nodeMap = {}; // Helper to link IDs back to objects
+            data.nodes.forEach(nodeData => {
+                const node = addNode(new THREE.Vector3(...nodeData.position), nodeData.color);
+                node.userData.id = nodeData.id;
+                nodeMap[nodeData.id] = node;
+            });
+
+            // 3. Recreate Connections
+            data.connections.forEach(connData => {
+                const nodeA = nodeMap[connData.nodeA];
+                const nodeB = nodeMap[connData.nodeB];
+                if (nodeA && nodeB) {
+                    addConnection(nodeA, nodeB);
+                }
+            });
+        }
+
+        // UI Toggles
+        document.getElementById('toggle-xz').addEventListener('change', (e) => gridXZ.visible = e.target.checked);
+        document.getElementById('toggle-xy').addEventListener('change', (e) => gridXY.visible = e.target.checked);
+        document.getElementById('toggle-yz').addEventListener('change', (e) => gridYZ.visible = e.target.checked);
+
+        // ==========================================
+        // 8. CONTEXT MENU
+        // ==========================================
+        window.addEventListener('contextmenu', (event) => {
+            event.preventDefault(); // Stop default browser menu
+            
+            updateMouse(event);
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(state.nodes);
+
+            if (intersects.length > 0) {
+                state.editingNode = intersects[0].object;
+                
+                // Show and position menu at mouse coordinates
+                menu.style.display = 'block';
+                menu.style.left = `${event.clientX}px`;
+                menu.style.top = `${event.clientY}px`;
+
+                // Fill inputs with current values
+                document.getElementById('menu-color').value = '#' + state.editingNode.material.color.getHexString();
+                document.getElementById('menu-x').value = state.editingNode.position.x.toFixed(2);
+                document.getElementById('menu-y').value = state.editingNode.position.y.toFixed(2);
+                document.getElementById('menu-z').value = state.editingNode.position.z.toFixed(2);
+            } else {
+                menu.style.display = 'none';
+                state.editingNode = null;
+            }
+        });
+
+        // Hide menu if clicking elsewhere
+        window.addEventListener('mousedown', (e) => {
+            if (!menu.contains(e.target)) menu.style.display = 'none';
+        });
+
+        document.getElementById('menu-apply').addEventListener('click', () => {
+            if (!state.editingNode) return;
+
+            // 1. Update Color
+            const colorVal = document.getElementById('menu-color').value;
+            state.editingNode.material.color.set(colorVal);
+
+            // 2. Update Position
+            const newPos = new THREE.Vector3(
+                parseFloat(document.getElementById('menu-x').value),
+                parseFloat(document.getElementById('menu-y').value),
+                parseFloat(document.getElementById('menu-z').value)
+            );
+            state.editingNode.position.copy(newPos);
+
+            // 3. Move Gizmo if this node is currently selected
+            const lastNode = state.selectedNodes[state.selectedNodes.length - 1];
+            if (lastNode === state.editingNode) {
+                gizmo.position.copy(newPos);
+            }
+
+            menu.style.display = 'none';
+            statusDiv.textContent = "Node updated.";
+        });
+
+        // ==========================================
+        // 9. ANIMATION LOOP
+        // ==========================================
+        function animate() {
+            requestAnimationFrame(animate);
+            // Update all line geometries to follow nodes
+            state.connections.forEach(conn => {
+                const start = conn.nodeA.position;
+                const end = conn.nodeB.position;
+                const distance = start.distanceTo(end);
+                
+                // 1. Scale cylinder to match distance
+                conn.line.scale.set(1, distance, 1);
+                
+                // 2. Position cylinder at the midpoint
+                conn.line.position.copy(start).lerp(end, 0.5);
+                
+                // 3. Rotate cylinder to align with the vector between nodes
+                const direction = new THREE.Vector3().subVectors(end, start).normalize();
+                const arrow = new THREE.Vector3(0, 1, 0); // Default cylinder orientation
+                conn.line.quaternion.setFromUnitVectors(arrow, direction);
+            });
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth - sideBarWidth;
+            camera.aspect = w / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, window.innerHeight);
+        });
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+    </script>
+</body>
+</html>
